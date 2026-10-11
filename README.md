@@ -10,6 +10,63 @@ Use DeepSeek, Kimi, and Qwen through their browser interfaces — no official AP
 
 ![Web dashboard — providers, session import, ops](img/ui_demo.jpg)
 
+## Windows: one-command install (Web2API)
+
+**Web2API** = this upstream project + a Windows installer and system-tray launcher. One PowerShell command (not admin) installs **or updates** everything: Node.js (if missing, with your consent), the latest [`PruhaNLP/web-to-api`](https://github.com/PruhaNLP/web-to-api), its dependencies and build, the tray launcher, an optional start-at-sign-in entry, and starts the API on port **3456**.
+
+```powershell
+irm https://raw.githubusercontent.com/sami8051/Web2API/main/install.ps1 | iex
+```
+
+It asks before installing Node.js (via `winget`) and before adding the sign-in startup entry. When it finishes you get the dashboard at `http://127.0.0.1:3456/`, the API at `http://127.0.0.1:3456/v1`, and a status dot near the clock (green running, amber starting, red error, grey stopped) with a menu: **Start, Stop, Restart, Open Dashboard, Open API, Open Logs, Start with Windows, Exit**. The API restarts automatically if it crashes.
+
+Extra options need the script-block form (`irm | iex` cannot take switches):
+
+```powershell
+$i = [scriptblock]::Create((irm https://raw.githubusercontent.com/sami8051/Web2API/main/install.ps1))
+& $i -Yes                      # no prompts (accepts Node.js install + startup entry)
+& $i -NoStartup                # do not create/refresh the sign-in startup entry
+& $i -Port 3457                # other port (remembered for later updates)
+```
+
+### Update
+
+Run the install command again. It checks the upstream commit; if unchanged it only refreshes the launcher and makes sure the API is running. If upstream moved, it builds the new version **in a staging folder** (`npm ci`, `npm run build`, a smoke test that the CLI flags the launcher needs still exist), and only then swaps it in. A failed download, build or smoke test leaves your running version untouched and prints the log path. `-Force` rebuilds even if unchanged; `-UpstreamRef <tag|sha>` installs a specific upstream version (it is not remembered, a plain re-run follows `main` again).
+
+### Rollback
+
+The previous build is kept. Run:
+
+```powershell
+& $i -Rollback
+```
+
+### Uninstall
+
+```powershell
+& $i -Uninstall               # stops the tray + API, removes the startup entry and the install folder; KEEPS your data
+& $i -Uninstall -RemoveData   # also deletes sessions/settings and the Chrome profile (you must type DELETE; -Yes skips that)
+```
+
+### What goes where
+
+| Path | Contents | Touched by update / rollback / uninstall? |
+|------|----------|-------------------------------------------|
+| `%LOCALAPPDATA%\Web2API\app` (+ `app.prev`) | upstream build | replaced on update, removed on uninstall |
+| `%LOCALAPPDATA%\Web2API\launcher` | our tray launcher; a locally edited copy is backed up as `*.bak-<time>` before being replaced | replaced / removed |
+| `%LOCALAPPDATA%\Web2API\install.json`, `logs\` | installed commit, port, paths; installer logs | removed on uninstall |
+| `%USERPROFILE%\.web-to-api` | sessions, auth flags, settings, API logs | **kept** unless `-RemoveData` |
+| `%USERPROFILE%\web-to-api\chrome-profile` | Chrome profile with your logins | **kept** unless `-RemoveData` |
+| `shell:startup\web-to-api.lnk` | start-at-sign-in entry | created with consent, removed on uninstall |
+
+Safety behaviour: only one tray and one installer can run at once; if port 3456 is held by another program the installer and tray report it (name and PID) and retry until it is free, they never kill it and never silently move to another port; `-RemoveData` refuses any path that is not a sub-folder of your user profile. Log files: `%USERPROFILE%\.web-to-api\logs` (tray: **Open Logs**).
+
+### How this repo relates to upstream
+
+The repository root is a snapshot of upstream `PruhaNLP/web-to-api` (so `git clone` + `npm run dev` still work for development); Web2API's own files are `install.ps1` and `scripts/windows/`. **The installer does not use that snapshot**: it downloads the current upstream into the disposable `app\` folder and records the exact commit in `install.json`, so upstream updates reach users without anyone merging them here, and our launcher never gets overwritten by an upstream change. Customise via installer options (port, state dir, Chrome profile are remembered in `install.json`); do not hand-edit `app\`, it is replaced on update.
+
+> Security note: the one-liner runs a script from this repository, then downloads and builds third-party code (upstream + its npm dependencies) on your machine. Read [`install.ps1`](install.ps1) first if you want to; it is short and does nothing outside the folders in the table above.
+
 ## Start here (Web UI)
 
 1. **Install & start** (one time):
@@ -270,24 +327,17 @@ npm run cookies:refresh -- --status
 
 Or use dashboard **Session Import** or **Ops → Re-import Sessions** (applies immediately and saves to `imports/`).
 
-## Windows background launcher (system tray)
+## Windows tray launcher from a git checkout (developers)
 
-[`scripts/windows/web-to-api-tray.ps1`](scripts/windows/web-to-api-tray.ps1) runs the API hidden with a tray icon near the clock (Windows PowerShell 5.1 only, no extra dependencies). Icon colour: green running, amber starting, red error, grey stopped. Tray menu: Start, Stop, Restart, Open Dashboard, Open API, Open Logs, Start with Windows, Exit. Double-click opens the dashboard.
-
-**What it runs** (detected from `package.json` at each start): `npm run start` if defined, else the built `bin` entry (`node dist/cli.js`) when it is newer than `src/`, else `npm run dev`. Always with `--no-open --browser-mode launch --port 3456`; your state dir, Chrome profile and sessions are untouched. If the API crashes it restarts automatically (2s, 4s, ... up to 60s backoff). If port 3456 is already taken (e.g. a terminal instance) it shows an error instead of letting the CLI drift to another port. Stop sends Ctrl+C so the CLI closes Chrome cleanly, then force-kills the whole process tree if needed. Only one tray instance can run.
+If you cloned this repo instead of using the installer, [`scripts/windows/web-to-api-tray.ps1`](scripts/windows/web-to-api-tray.ps1) runs the checkout in the background with the same tray menu (Windows PowerShell 5.1, no extra dependencies). It runs, detected from `package.json` at each start: `npm run start` if defined, else the built `bin` entry (`node dist/cli.js`) when newer than `src/`, else `npm run dev`; always with `--no-open --browser-mode launch --port 3456`. Stop sends Ctrl+C so the CLI closes Chrome cleanly, then force-kills the process tree if needed.
 
 ```powershell
-# Try it now (no startup change)
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1
-
-# Install: asks for consent, adds a Startup-folder shortcut, launches the tray
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1 -Install
-
-# Uninstall: removes the shortcut and closes the tray (which stops the API)
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1 -Uninstall
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1             # run now
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1 -Install    # + start at sign-in (asks first)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1 -Uninstall  # remove startup entry, close tray
 ```
 
-Disable startup only: untick **Start with Windows** in the tray menu (or Task Manager → Startup apps → `web-to-api`). Logs: **Open Logs** opens `~/.web-to-api/logs` (`server.log`, plus `launcher.out.log` / `launcher.err.log` for the last run and `*.prev.log` for the one before). Close any manually started instance before enabling the tray, since both want port 3456. The dashboard's **Restart** button uses systemd and does nothing on Windows; use the tray's Restart.
+The dashboard's **Restart** button uses systemd and does nothing on Windows; use the tray's Restart.
 
 ## Environment variables
 

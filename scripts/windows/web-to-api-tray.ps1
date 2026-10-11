@@ -4,27 +4,34 @@
 
 .DESCRIPTION
   Run with no switches to start the tray app (it starts the API immediately).
-    -Install    ask consent, add a Startup-folder shortcut, start the tray now
+    -Install    ask consent (-Yes skips the question), add a Startup-folder shortcut, start the tray now
     -Uninstall  remove the Startup shortcut and close a running tray (stops the API)
-  Params after -Port exist mainly for testing; defaults match the project.
+    -Stop       close a running tray (stops the API) but keep the startup entry
+  -AppDir points at the web-to-api checkout/build; default is two levels above this script.
 #>
 [CmdletBinding()]
 param(
     [int]$Port = 3456,
     [string]$StateDir = (Join-Path $env:USERPROFILE '.web-to-api'),
+    [string]$ChromeProfile = '',
+    [string]$AppDir = '',
     [string[]]$CliArgs = @(),
     [switch]$Install,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$Stop,
+    [switch]$Yes
 )
 
 $ErrorActionPreference = 'Stop'
-$Root       = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$Root       = if ($AppDir) { $AppDir } else { (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
+if ($ChromeProfile) { $CliArgs = @($CliArgs) + @('--chrome-profile', $ChromeProfile) }
 $LogDir     = Join-Path $StateDir 'logs'
 $OutLog     = Join-Path $LogDir 'launcher.out.log'
 $ErrLog     = Join-Path $LogDir 'launcher.err.log'
 $StartupLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'web-to-api.lnk'
 $Url        = "http://127.0.0.1:$Port"
 $QuitName   = 'Local\web-to-api-tray-quit'
+$MutexName  = 'Local\web-to-api-tray'
 $StartupGraceSec = 120   # API must open its port within this long, else it is killed and retried
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -35,13 +42,21 @@ Add-Type -Namespace W -Name K -MemberDefinition @'
 [DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint e, uint g);
 '@
 
+# Arguments that make a fresh tray process behave like this one (startup shortcut, -Install).
+function Get-SelfArgs {
+    $a = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`" -Port $Port -StateDir `"$StateDir`""
+    if ($AppDir) { $a += " -AppDir `"$AppDir`"" }
+    if ($ChromeProfile) { $a += " -ChromeProfile `"$ChromeProfile`"" }
+    $a
+}
+
 # ---- startup shortcut (the "Start with Windows" switch) ----
 function Test-Startup { Test-Path $StartupLnk }
 function Set-Startup([bool]$On) {
     if ($On) {
         $s = (New-Object -ComObject WScript.Shell).CreateShortcut($StartupLnk)
         $s.TargetPath = (Get-Command powershell.exe).Source
-        $s.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`" -Port $Port"
+        $s.Arguments = Get-SelfArgs
         $s.WorkingDirectory = $Root
         $s.WindowStyle = 7   # minimized: shortest possible console flash at sign-in
         $s.Description = 'web-to-api tray launcher'
@@ -208,26 +223,40 @@ function Exit-App {
 }
 
 # ---- entry points ----
-if ($Uninstall) {
-    Set-Startup $false
+# Ask a running tray to exit (it stops the API first) and wait until it is gone.
+function Request-TrayQuit {
     $h = $null
-    if ([Threading.EventWaitHandle]::TryOpenExisting($QuitName, [ref]$h)) { [void]$h.Set(); Write-Host 'Closing running tray (it stops the API first)...' }
-    Write-Host 'Startup disabled. Nothing else was changed.'
+    if (-not [Threading.EventWaitHandle]::TryOpenExisting($QuitName, [ref]$h)) { return $false }
+    [void]$h.Set()
+    for ($i = 0; $i -lt 90; $i++) {
+        $m = $null
+        if (-not [Threading.Mutex]::TryOpenExisting($MutexName, [ref]$m)) { break }
+        $m.Dispose(); Start-Sleep -Milliseconds 500
+    }
+    $true
+}
+
+if ($Stop -or $Uninstall) {
+    if ($Uninstall) { Set-Startup $false }
+    if (Request-TrayQuit) { Write-Host 'Tray closed (it stopped the API first).' } else { Write-Host 'Tray was not running.' }
+    if ($Uninstall) { Write-Host 'Startup disabled. Nothing else was changed.' }
     return
 }
 if ($Install) {
-    $ans = Read-Host "Start the web-to-api tray (API on port $Port) automatically when you sign in to Windows? [Y/n]"
-    if ($ans -match '^(n|no)$') { Write-Host 'Cancelled, startup not changed.'; return }
+    if (-not $Yes) {
+        $ans = Read-Host "Start the web-to-api tray (API on port $Port) automatically when you sign in to Windows? [Y/n]"
+        if ($ans -match '^(n|no)$') { Write-Host 'Cancelled, startup not changed.'; return }
+    }
     Set-Startup $true
     Write-Host "Startup enabled: $StartupLnk"
-    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`" -Port $Port"
+    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList (Get-SelfArgs)
     Write-Host 'Tray launched - look for the dot near the clock (it may be under the ^ overflow arrow).'
     return
 }
 if ($MyInvocation.InvocationName -eq '.') { return }   # dot-sourced (tests): functions only, no UI
 
 $created = $false
-$mutex = New-Object Threading.Mutex($true, 'Local\web-to-api-tray', [ref]$created)
+$mutex = New-Object Threading.Mutex($true, $MutexName, [ref]$created)
 if (-not $created) { return }   # already running
 
 $quit = New-Object Threading.EventWaitHandle($false, 'ManualReset', $QuitName)
