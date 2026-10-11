@@ -211,23 +211,14 @@ document.getElementById('btn-save-api-auth').addEventListener('click', saveApiAu
 document.getElementById('btn-restart-service').addEventListener('click', restartService);
 document.getElementById('btn-load-logs').addEventListener('click', loadServiceLogs);
 
-// Tab switching
-document.querySelectorAll('.tab-btn').forEach(function (btn) {
-  btn.addEventListener('click', function () {
-    var tab = btn.getAttribute('data-tab');
-    document.querySelectorAll('.tab-btn').forEach(function (b) {
-      b.classList.toggle('active', b === btn);
-    });
-    document.querySelectorAll('.tab-panel').forEach(function (panel) {
-      panel.classList.toggle('active', panel.id === 'tab-' + tab);
-    });
-    if (tab === 'logs') {
-      loadServiceLogs();
-      startLogsPoll();
-    } else {
-      stopLogsPoll();
-    }
-  });
+// Logs fold: load and poll only while it is open
+document.getElementById('logs-panel').addEventListener('toggle', function (e) {
+  if (e.target.open) {
+    loadServiceLogs();
+    startLogsPoll();
+  } else {
+    stopLogsPoll();
+  }
 });
 
 function formatUptime(seconds) {
@@ -303,6 +294,8 @@ function buildModelSelect(providerId, authenticated) {
 }
 
 // Load providers list
+var connectAutoOpened = false;
+
 async function loadProviders() {
   await loadModels();
   try {
@@ -324,7 +317,7 @@ async function loadProviders() {
     var authCount = data.providers.filter(function (p) {
       return p.authenticated;
     }).length;
-    countEl.textContent = authCount + ' / ' + data.providers.length + ' active';
+    countEl.textContent = authCount + ' of ' + data.providers.length + ' active';
 
     list.textContent = '';
 
@@ -375,13 +368,13 @@ async function loadProviders() {
 
       head.appendChild(meta);
       card.appendChild(head);
-      card.appendChild(buildModelSelect(p.id, p.authenticated));
+      if (p.authenticated) card.appendChild(buildModelSelect(p.id, true));
       list.appendChild(card);
     });
 
-    var metricProviders = document.getElementById('metric-providers');
-    if (metricProviders) {
-      metricProviders.textContent = authCount + ' / ' + data.providers.length;
+    if (authCount < data.providers.length && !connectAutoOpened) {
+      connectAutoOpened = true;
+      document.getElementById('connect').open = true;
     }
   } catch (err) {
     var list = document.getElementById('provider-list');
@@ -836,8 +829,8 @@ function scrollLogBoxToBottom(box) {
 function startLogsPoll() {
   stopLogsPoll();
   logsPollTimer = setInterval(function () {
-    var panel = document.getElementById('tab-logs');
-    if (panel && panel.classList.contains('active')) {
+    var panel = document.getElementById('logs-panel');
+    if (panel && panel.open) {
       loadServiceLogs(true);
     }
   }, LOGS_POLL_MS);
@@ -1188,78 +1181,20 @@ async function importCapturedSession() {
   }
 }
 
-// Load system health stats
+// Load server health into the header status line
 async function loadHealth() {
+  var statusEl = document.getElementById('server-status');
   try {
     var res = await apiFetch('/admin/health');
     var data = await res.json();
-    var el = document.getElementById('health-info');
-
-    var seconds = data.uptime || 0;
-    var uptime = formatUptime(seconds);
-    var browserStatus = data.browser ? data.browser.status : 'unknown';
     var isHealthy = data.status === 'healthy';
-
-    var uptimeEl = document.getElementById('metric-uptime');
-    var browserEl = document.getElementById('metric-browser');
-    if (uptimeEl) uptimeEl.textContent = uptime;
-    if (browserEl) browserEl.textContent = browserStatus;
-
-    var statusEl = document.getElementById('server-status');
-    if (statusEl) {
-      statusEl.innerHTML =
-        '<span class="pulse ' + (isHealthy ? 'green' : '') + '"></span>' +
-        '<span>' + (isHealthy ? 'Online' : (data.status || 'Unknown')) + '</span>';
-      statusEl.style.color = isHealthy ? '' : 'var(--yellow)';
-      statusEl.style.borderColor = isHealthy ? '' : 'rgba(230, 180, 80, 0.35)';
-      statusEl.style.background = isHealthy ? '' : 'rgba(230, 180, 80, 0.08)';
-    }
-
-    el.textContent = '';
-
-    var items = [
-      {
-        label: 'Status',
-        value: data.status || 'unknown',
-        cls: isHealthy ? 'green' : '',
-      },
-      { label: 'Uptime', value: uptime, cls: '' },
-      {
-        label: 'Browser',
-        value: browserStatus,
-        cls: browserStatus === 'running' ? 'green' : '',
-      },
-    ];
-
-    items.forEach(function (item) {
-      var div = document.createElement('div');
-      div.className = 'stat-item';
-
-      var label = document.createElement('span');
-      label.className = 'stat-label';
-      label.textContent = item.label;
-      div.appendChild(label);
-
-      var val = document.createElement('span');
-      val.className = 'stat-value' + (item.cls ? ' ' + item.cls : '');
-      val.textContent = item.value;
-      div.appendChild(val);
-
-      el.appendChild(div);
-    });
+    statusEl.className = 'status ' + (isHealthy ? 'online' : '');
+    statusEl.textContent = isHealthy
+      ? 'Online · up ' + formatUptime(data.uptime || 0)
+      : (data.status || 'Unknown');
   } catch (e) {
-    var el = document.getElementById('health-info');
-    el.textContent = '';
-    var errDiv = document.createElement('div');
-    errDiv.className = 'error';
-    errDiv.textContent = 'Unable to reach server';
-    el.appendChild(errDiv);
-
-    var statusEl = document.getElementById('server-status');
-    if (statusEl) {
-      statusEl.innerHTML = '<span class="pulse"></span><span>Offline</span>';
-      statusEl.style.color = 'var(--red)';
-    }
+    statusEl.className = 'status offline';
+    statusEl.textContent = 'Offline';
   }
 }
 

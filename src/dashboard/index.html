@@ -3,272 +3,193 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>web-to-api — Dashboard</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/dashboard/style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-brand">
-        <span class="logo-mark">W</span>
-        <div>
-          <div class="brand-name">web-to-api</div>
-          <div class="brand-sub">OpenAI-compatible bridge</div>
-        </div>
-      </div>
-      <div class="topbar-metrics" id="topbar-metrics">
-        <span class="metric-pill"><span class="metric-label">Uptime</span><span id="metric-uptime">—</span></span>
-        <span class="metric-pill"><span class="metric-label">Browser</span><span id="metric-browser">—</span></span>
-        <span class="metric-pill"><span class="metric-label">Providers</span><span id="metric-providers">—</span></span>
-      </div>
-    </div>
-    <div class="topbar-status" id="server-status">
-      <span class="pulse green"></span>
-      <span>Online</span>
-    </div>
-  </header>
+  <main class="page">
+    <header class="head">
+      <h1>web-to-api</h1>
+      <span class="status" id="server-status">Connecting…</span>
+    </header>
 
-  <div class="shell">
-    <section class="hero card">
-      <div class="hero-main">
-        <div class="hero-label">API Base URL</div>
-        <div class="url-box">
-          <code id="openai-url"></code>
-          <button class="btn-copy" data-target="openai-url">Copy</button>
-        </div>
-        <p class="hero-hint">Point any OpenAI client here · <code>/v1/chat/completions</code></p>
+    <div class="endpoint">
+      <code id="openai-url"></code>
+      <button type="button" class="btn btn-copy" data-target="openai-url">Copy</button>
+    </div>
+
+    <section aria-labelledby="providers-title">
+      <h2 id="providers-title">Providers <span class="count" id="provider-count"></span></h2>
+      <div class="providers" id="provider-list">
+        <div class="loading">Loading…</div>
       </div>
-      <div class="hero-stats" id="health-info">
-        <div class="loading">Loading...</div>
+      <div class="row">
+        <button type="button" class="btn" id="btn-check-all">Check</button>
+        <button type="button" class="btn" id="btn-test-all">Deep test</button>
+        <button type="button" class="btn" id="btn-refresh-all">Re-import saved sessions</button>
       </div>
+      <div class="result" id="ops-result" aria-live="polite"></div>
     </section>
 
-    <div class="dashboard-grid">
-      <!-- Providers -->
-      <section class="card panel-providers">
-        <div class="card-header">
-          <h2>Providers</h2>
-          <span class="count" id="provider-count">0 / 0</span>
+    <div class="folds">
+    <details class="fold" id="connect">
+      <summary>Connect accounts</summary>
+      <div class="fold-body">
+        <p>Log in to Qwen, Kimi or DeepSeek in your own Chrome. The extension then keeps each session synced.</p>
+        <div class="row">
+          <button type="button" class="btn primary" id="btn-install-extension">Install extension</button>
         </div>
-        <div class="card-body">
-          <div class="provider-grid" id="provider-list">
-            <div class="loading">Loading providers...</div>
-          </div>
-        </div>
-      </section>
+        <div class="note hidden" id="extension-steps" aria-live="polite"></div>
 
-      <!-- Session import -->
-      <section class="card panel-import">
-        <div class="card-header">
-          <h2>Session Import</h2>
-          <span class="badge">persisted to ~/.web-to-api/imports</span>
-        </div>
-        <div class="card-body import-body">
-          <div class="import-row">
-            <label class="field-inline">
-              <span>Provider</span>
-              <select id="state-provider">
-                <option value="deepseek-web">DeepSeek</option>
-                <option value="qwen-web">Qwen</option>
-                <option value="kimi-web">Kimi</option>
-              </select>
-            </label>
-            <button class="btn-primary btn-import" id="btn-import-state">Import Session</button>
-          </div>
+        <details class="sub">
+          <summary>Manual import</summary>
+          <div class="sub-body">
+            <div class="row">
+              <label class="field-inline">
+                <span>Provider</span>
+                <select id="state-provider">
+                  <option value="deepseek-web">DeepSeek</option>
+                  <option value="qwen-web">Qwen</option>
+                  <option value="kimi-web">Kimi</option>
+                </select>
+              </label>
+              <button type="button" class="btn primary" id="btn-import-state">Import</button>
+            </div>
 
-          <div id="import-single" class="import-files">
-            <label class="file-drop">
-              <span class="file-drop-label">JSON file</span>
-              <input type="file" id="state-file" accept=".json,application/json">
-            </label>
-          </div>
-
-          <div id="import-kimi" class="import-files hidden">
-            <p class="import-note">On kimi.ai: DevTools → Console → <code>copy(localStorage.getItem('refresh_token'))</code>. Paste that JWT here. Access tokens expire in 15 minutes and are rejected.</p>
-            <label class="token-paste">
-              <span class="file-drop-label">refresh_token</span>
-              <textarea id="kimi-refresh-token" rows="4" placeholder="eyJ... refresh JWT"></textarea>
-            </label>
-          </div>
-
-          <div id="import-dual" class="import-files hidden">
-            <p class="import-note" id="import-dual-note">This provider needs Cookie-Editor cookies and Console state.</p>
-            <div class="import-files-grid">
+            <div id="import-single" class="import-files">
               <label class="file-drop">
-                <span class="file-drop-label">1 · Cookies (Cookie-Editor)</span>
+                <span>Session JSON</span>
+                <input type="file" id="state-file" accept=".json,application/json">
+              </label>
+            </div>
+
+            <div id="import-kimi" class="import-files hidden">
+              <p class="note">On kimi.ai open DevTools → Console and run <code>copy(localStorage.getItem('refresh_token'))</code>, then paste it here. Access tokens expire in 15 minutes and are rejected.</p>
+              <label class="file-drop">
+                <span>refresh_token</span>
+                <textarea id="kimi-refresh-token" rows="3" placeholder="eyJ…"></textarea>
+              </label>
+            </div>
+
+            <div id="import-dual" class="import-files hidden">
+              <p class="note" id="import-dual-note">This provider needs Cookie-Editor cookies and a Console state export.</p>
+              <label class="file-drop">
+                <span>1 · Cookies (Cookie-Editor)</span>
                 <input type="file" id="state-cookies-file" accept=".json,application/json">
               </label>
               <label class="file-drop">
-                <span class="file-drop-label">2 · State (Console export)</span>
+                <span>2 · State (Console export)</span>
                 <input type="file" id="state-local-file" accept=".json,application/json">
               </label>
             </div>
-          </div>
 
-          <div class="script-panel">
-            <div class="script-header">
-              <div class="script-title">
-                <span>Sync from your Chrome (easiest: extension)</span>
-                <span class="script-sub">Press Install extension once. It then syncs your logged-in Qwen/Kimi/DeepSeek tabs by itself (or click its icon). Fallback: bookmark / Copy.</span>
-              </div>
-              <button type="button" class="btn-primary btn-sm" id="btn-install-extension">Install extension</button>
-              <a id="capture-bookmarklet" class="btn-secondary btn-sm" href="#" draggable="true" onclick="return false">web-to-api capture</a>
-              <button type="button" class="btn-secondary btn-sm" id="btn-copy-capture">Copy</button>
-            </div>
-            <div id="extension-steps" class="script-sub hidden"></div>
-          </div>
-
-          <div id="export-script-box" class="script-panel hidden">
-            <div class="script-header">
-              <div class="script-title">
+            <div id="export-script-box" class="script-panel hidden">
+              <div class="row between">
                 <span>Console export script</span>
-                <span class="script-sub">DevTools → Console on provider site</span>
+                <span class="row">
+                  <button type="button" class="btn sm" id="btn-toggle-script">Show</button>
+                  <button type="button" class="btn sm" id="btn-copy-export-script">Copy</button>
+                </span>
               </div>
-              <div class="script-actions">
-                <button type="button" class="btn-secondary btn-sm" id="btn-toggle-script">Show</button>
-                <button type="button" class="btn-primary btn-sm" id="btn-copy-export-script">Copy</button>
+              <div class="script-body collapsed" id="export-script-body">
+                <pre class="script-code"><code id="export-script"></code></pre>
               </div>
             </div>
-            <div class="script-body collapsed" id="export-script-body">
-              <pre class="script-code"><code id="export-script"></code></pre>
-            </div>
-          </div>
 
-          <div class="result-box result-compact" id="import-result">Select provider and upload session JSON.</div>
+            <div class="row between">
+              <span class="muted">Without the extension: drag this to your bookmarks bar, or copy the script.</span>
+              <span class="row">
+                <a id="capture-bookmarklet" class="btn sm" href="#" draggable="true" onclick="return false">web-to-api capture</a>
+                <button type="button" class="btn sm" id="btn-copy-capture">Copy script</button>
+              </span>
+            </div>
+
+            <div class="result" id="import-result" aria-live="polite"></div>
+          </div>
+        </details>
+      </div>
+    </details>
+
+    <details class="fold" id="settings-panel">
+      <summary>Settings</summary>
+      <div class="fold-body">
+        <div id="api-auth-block" class="field hidden">
+          <label for="api-auth-token">API auth token <span class="muted">(needed with <code>--auth-token</code>)</span></label>
+          <div class="row">
+            <input type="password" id="api-auth-token" class="input" placeholder="your bearer token" autocomplete="off">
+            <button type="button" class="btn sm" id="btn-save-api-auth">Save</button>
+          </div>
         </div>
-      </section>
+        <hr id="api-auth-divider" class="hidden">
 
-      <!-- Tools sidebar -->
-      <aside class="panel-tools">
-        <section class="card tabs-card">
-          <div class="tab-bar">
-            <button type="button" class="tab-btn active" data-tab="ops">Ops</button>
-            <button type="button" class="tab-btn" data-tab="settings">Settings</button>
-            <button type="button" class="tab-btn" data-tab="logs">Logs</button>
+        <div class="field">
+          <label for="auto-order-input">Auto model order <span class="muted">(one model id per line)</span></label>
+          <textarea id="auto-order-input" class="input" spellcheck="false" rows="5"></textarea>
+          <div class="row">
+            <button type="button" class="btn primary" id="btn-save-auto-order">Save</button>
+            <button type="button" class="btn" id="btn-reset-auto-order">Reset</button>
           </div>
+        </div>
 
-          <div class="tab-panel active" id="tab-ops">
-            <div class="card-body compact">
-              <div class="actions-grid">
-                <button class="btn-primary" id="btn-check-all">Check All</button>
-                <button class="btn-primary" id="btn-test-all">Deep Test</button>
-                <button class="btn-secondary" id="btn-refresh-all">Re-import Sessions</button>
+        <details class="sub">
+          <summary>Telegram alerts</summary>
+          <div class="sub-body">
+            <p class="muted" id="telegram-env-hint">Optional proxy, then verify the bot token, then fetch the chat ID.</p>
+            <div id="telegram-proxy-block" class="field">
+              <label for="telegram-proxy-server">HTTP proxy <span class="muted">(only if api.telegram.org is blocked)</span></label>
+              <div class="proxy-grid">
+                <input type="text" id="telegram-proxy-server" class="input" placeholder="http://host:port" spellcheck="false">
+                <input type="text" id="telegram-proxy-user" class="input" placeholder="username" spellcheck="false" autocomplete="off">
+                <input type="password" id="telegram-proxy-pass" class="input" placeholder="password" autocomplete="off">
               </div>
-              <div class="result-box" id="ops-result">No checks yet.</div>
+              <span class="muted" id="telegram-proxy-status"></span>
+            </div>
+            <div class="field">
+              <label for="telegram-bot-token">Bot token <span class="muted" id="telegram-token-hint">(required on first save)</span></label>
+              <div class="row">
+                <input type="password" id="telegram-bot-token" class="input" placeholder="123456:ABC…" autocomplete="off">
+                <button type="button" class="btn sm" id="btn-verify-telegram-token">Verify</button>
+              </div>
+              <span class="muted" id="telegram-verify-status"></span>
+            </div>
+            <div class="field">
+              <label for="telegram-chat-id">Chat ID <span class="muted">(send /start to the bot first)</span></label>
+              <div class="row">
+                <input type="text" id="telegram-chat-id" class="input" placeholder="-1001234567890" spellcheck="false">
+                <button type="button" class="btn sm" id="btn-discover-chat-id" disabled>Get ID</button>
+              </div>
+              <select id="telegram-chat-pick" class="input hidden" aria-label="Chat"></select>
+            </div>
+            <div class="row">
+              <button type="button" class="btn primary" id="btn-save-telegram">Save</button>
+              <button type="button" class="btn" id="btn-telegram-test">Send test</button>
             </div>
           </div>
+        </details>
 
-          <div class="tab-panel" id="tab-settings">
-            <div class="card-body compact">
-              <div id="api-auth-block" class="field-block hidden">
-                <label class="field-block">
-                  API auth token
-                  <span class="hint">required with <code>--auth-token</code> · or open <code>?token=…</code> once</span>
-                  <div class="field-row">
-                    <input type="password" id="api-auth-token" class="field-input" placeholder="your bearer token" autocomplete="off">
-                    <button type="button" class="btn-secondary btn-sm" id="btn-save-api-auth">Save</button>
-                  </div>
-                </label>
-              </div>
-              <div id="api-auth-divider" class="settings-divider hidden"></div>
+        <div class="row between">
+          <span class="muted">Restart the API process (the tray restarts it).</span>
+          <button type="button" class="btn danger" id="btn-restart-service">Restart service</button>
+        </div>
+        <div class="result" id="settings-result" aria-live="polite"></div>
+      </div>
+    </details>
 
-              <label class="field-block">
-                Auto model order
-                <span class="hint">one model id per line</span>
-                <textarea id="auto-order-input" spellcheck="false" rows="5"></textarea>
-              </label>
-              <div class="actions-row">
-                <button class="btn-primary" id="btn-save-auto-order">Save order</button>
-                <button class="btn-secondary" id="btn-reset-auto-order">Reset order</button>
-              </div>
-
-              <div class="settings-divider"></div>
-
-              <div class="field-block">
-                Telegram alerts
-                <span class="hint" id="telegram-env-hint">1 · Proxy → 2 · Verify token → 3 · Get Chat ID</span>
-              </div>
-              <div id="telegram-proxy-block">
-                <label class="field-block">
-                  HTTP proxy
-                  <span class="hint">if api.telegram.org is blocked — same format as browser proxy</span>
-                </label>
-                <div class="proxy-grid">
-                  <input type="text" id="telegram-proxy-server" class="field-input" placeholder="http://168.80.81.65:8000" spellcheck="false">
-                  <input type="text" id="telegram-proxy-user" class="field-input" placeholder="username" spellcheck="false" autocomplete="off">
-                  <input type="password" id="telegram-proxy-pass" class="field-input" placeholder="password" autocomplete="off">
-                </div>
-                <span class="hint" id="telegram-proxy-status"></span>
-              </div>
-              <label class="field-block">
-                Bot token
-                <span class="hint" id="telegram-token-hint">required on first save</span>
-                <div class="field-row">
-                  <input type="password" id="telegram-bot-token" class="field-input" placeholder="123456:ABC..." autocomplete="off">
-                  <button type="button" class="btn-secondary btn-sm" id="btn-verify-telegram-token">Verify</button>
-                </div>
-                <span class="hint" id="telegram-verify-status"></span>
-              </label>
-              <label class="field-block">
-                Chat ID
-                <span class="hint">send /start to your bot, then fetch ID</span>
-                <div class="field-row">
-                  <input type="text" id="telegram-chat-id" class="field-input" placeholder="-1001234567890" spellcheck="false">
-                  <button type="button" class="btn-secondary btn-sm" id="btn-discover-chat-id" disabled>Get ID</button>
-                </div>
-                <select id="telegram-chat-pick" class="field-input hidden"></select>
-              </label>
-              <div class="actions-row">
-                <button class="btn-primary" id="btn-save-telegram">Save Telegram</button>
-                <button class="btn-secondary" id="btn-telegram-test">Test alert</button>
-                <button class="btn-danger" id="btn-restart-service">Restart service</button>
-              </div>
-
-              <div class="result-box result-compact" id="settings-result">Loading settings...</div>
-            </div>
-          </div>
-
-          <div class="tab-panel" id="tab-logs">
-            <div class="card-body compact">
-              <div class="actions-row">
-                <button class="btn-secondary" id="btn-load-logs">Load Logs</button>
-              </div>
-              <pre class="log-box" id="service-logs">Open this tab to load server.log</pre>
-            </div>
-          </div>
-        </section>
-
-        <section class="card guide-card">
-          <div class="card-header">
-            <h2>Import cheat sheet</h2>
-          </div>
-          <div class="card-body compact guide-table">
-            <div class="guide-row">
-              <span class="guide-provider">Kimi</span>
-              <span class="guide-value">paste <code>refresh_token</code></span>
-            </div>
-            <div class="guide-row">
-              <span class="guide-provider">DeepSeek</span>
-              <span class="guide-value">console <code>deepseek-state.json</code></span>
-            </div>
-            <div class="guide-row">
-              <span class="guide-provider">Qwen</span>
-              <span class="guide-value"><code>qwen.json</code> + <code>qwen-state.json</code></span>
-            </div>
-            <p class="guide-foot">Files land in <code>~/.web-to-api/imports/</code> and reload on restart.</p>
-          </div>
-        </section>
-      </aside>
+    <details class="fold" id="logs-panel">
+      <summary>Logs</summary>
+      <div class="fold-body">
+        <div class="row">
+          <button type="button" class="btn sm" id="btn-load-logs">Refresh</button>
+        </div>
+        <pre class="log-box" id="service-logs">Open this section to load server.log</pre>
+      </div>
+    </details>
     </div>
-  </div>
+  </main>
 
-  <footer class="footer">
-    <a href="https://github.com/linuxhsj/web-to-api" target="_blank">GitHub</a>
-    <span class="sep">·</span>
-    <span>web-to-api v1.0.0</span>
-  </footer>
-
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status"></div>
   <script src="/dashboard/app.js"></script>
 </body>
 </html>
