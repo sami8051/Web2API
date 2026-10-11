@@ -20,19 +20,6 @@
       <button type="button" class="btn btn-copy" data-target="openai-url">Copy</button>
     </div>
 
-    <section aria-labelledby="providers-title">
-      <h2 id="providers-title">Providers <span class="count" id="provider-count"></span></h2>
-      <div class="providers" id="provider-list">
-        <div class="loading">Loading…</div>
-      </div>
-      <div class="row">
-        <button type="button" class="btn" id="btn-check-all">Check</button>
-        <button type="button" class="btn" id="btn-test-all">Deep test</button>
-        <button type="button" class="btn" id="btn-refresh-all">Re-import saved sessions</button>
-      </div>
-      <div class="result" id="ops-result" aria-live="polite"></div>
-    </section>
-
     <div class="folds">
     <details class="fold" id="connect">
       <summary>Connect accounts</summary>
@@ -47,7 +34,7 @@
           </li>
           <li>
             <strong>Log in</strong>
-            <span class="muted">Click Login on a provider above and sign in with Google. The extension syncs the session by itself.</span>
+            <span class="muted">Click Login on a provider below and sign in with Google. The extension syncs the session by itself.</span>
           </li>
         </ol>
 
@@ -119,7 +106,22 @@
         </details>
       </div>
     </details>
+    </div>
 
+    <section aria-labelledby="providers-title">
+      <h2 id="providers-title">Providers <span class="count" id="provider-count"></span></h2>
+      <div class="providers" id="provider-list">
+        <div class="loading">Loading…</div>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" id="btn-check-all">Check</button>
+        <button type="button" class="btn" id="btn-test-all">Deep test</button>
+        <button type="button" class="btn" id="btn-refresh-all">Re-import saved sessions</button>
+      </div>
+      <div class="result" id="ops-result" aria-live="polite"></div>
+    </section>
+
+    <div class="folds">
     <details class="fold" id="settings-panel">
       <summary>Settings</summary>
       <div class="fold-body">
