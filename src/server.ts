@@ -25,6 +25,8 @@ export interface AppOptions {
   onLogin?: (providerId: string) => Promise<{ status: string; message: string }>;
   getBrowserStatus?: () => BrowserStatus;
   getLoginState?: () => LoginState;
+  verifySessions?: () => Promise<void>;
+  verifySession?: (providerId: string) => Promise<boolean>;
   importBrowserState?: (state: BrowserStateImportPayload) => Promise<BrowserStateImportResult>;
   errorNotifier?: ErrorNotifier | null;
   logFilePath?: string;
@@ -93,6 +95,8 @@ export function createApp(opts: AppOptions): Hono {
     authStore: opts.authStore,
     onLogin: opts.onLogin,
     getLoginState: opts.getLoginState,
+    verifySessions: opts.verifySessions,
+    verifySession: opts.verifySession,
     getBrowserStatus: opts.getBrowserStatus,
     importBrowserState: opts.importBrowserState,
     errorNotifier: opts.errorNotifier ?? null,

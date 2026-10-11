@@ -24,6 +24,7 @@ import { createTelegramErrorNotifier, mergeTelegramSettings, MutableErrorNotifie
 import { setAutoModelOrder } from './core/auto-model-order.js';
 import { loadRuntimeSettings } from './core/runtime-settings.js';
 import { defaultImportsSourceDir, findImportCandidates, importSessionsFromDir } from './session/import.js';
+import { getProviderSessionSpec } from './session/import-config.js';
 import { initFileLogger, getLogFilePath } from './core/logger.js';
 
 const PKG = JSON.parse(
@@ -357,6 +358,20 @@ program
       }
     }
 
+    // Stored "active" is only a claim; the profile must really hold the provider's tokens.
+    const verifySession = async (providerId: string): Promise<boolean> => {
+      const spec = getProviderSessionSpec(providerId);
+      if (!spec) return authStore.getStatus(providerId).status === 'active';
+      const valid = await browserManager.hasStoredSession(spec.origin, spec.keyLocalStorage)
+        .catch(() => false);
+      authStore.setStatus(providerId, valid ? 'active' : 'expired');
+      return valid;
+    };
+    const verifySessions = async () => {
+      for (const id of enabled) await verifySession(id);
+    };
+    if (browserMode === 'launch') await verifySessions();
+
     // ── Step 5: Create and start server ──
     const telegramNotifier = new MutableErrorNotifier();
     const reloadTelegramNotifier = () => {
@@ -379,12 +394,11 @@ program
         const provider = registry.getProvider(providerId);
         if (!provider) return { status: 'error', message: `Provider "${providerId}" not found.` };
 
-        await browserManager.startLogin(providerId, provider.info.loginUrl, (success) => {
-          if (success) {
-            authStore.setStatus(providerId, 'active');
-            console.log(chalk.green(`  ✓ ${providerId} login completed. Cookies saved.`));
+        await browserManager.startLogin(providerId, provider.info.loginUrl, async (success) => {
+          if (success && await verifySession(providerId)) {
+            console.log(chalk.green(`  ✓ ${providerId} login completed. Session saved in browser profile.`));
           } else {
-            console.log(chalk.yellow(`  ⚠ ${providerId} login did not complete.`));
+            console.log(chalk.yellow(`  ⚠ ${providerId} login did not complete (no session token found).`));
           }
         });
 
@@ -396,6 +410,8 @@ program
         };
       },
       getLoginState: () => browserManager.getLoginState(),
+      verifySessions,
+      verifySession,
     });
 
     serve({

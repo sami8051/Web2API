@@ -35,6 +35,8 @@ export interface ManagementDeps {
   authStore: AuthStore;
   onLogin?: (providerId: string) => Promise<{ status: string; message: string }>;
   getLoginState?: () => LoginState;
+  verifySessions?: () => Promise<void>;
+  verifySession?: (providerId: string) => Promise<boolean>;
   getBrowserStatus?: () => BrowserStatus;
   importBrowserState?: (state: BrowserStateImportPayload) => Promise<BrowserStateImportResult>;
   startTime?: number;
@@ -56,6 +58,7 @@ export function managementRoutes(deps: ManagementDeps): Hono {
   });
 
   app.post('/admin/providers/check-all', async (c) => {
+    await deps.verifySessions?.();
     const statuses = await registry.providerStatus();
     return c.json({
       checkedAt: new Date().toISOString(),
@@ -465,12 +468,16 @@ export function managementRoutes(deps: ManagementDeps): Hono {
       }
 
       const result = await deps.importBrowserState(body.state);
+      let verified: boolean | undefined;
       if (body.providerId) {
-        authStore.setStatus(body.providerId, 'active');
+        verified = deps.verifySession
+          ? await deps.verifySession(body.providerId)
+          : (authStore.setStatus(body.providerId, 'active'), undefined);
       }
       return c.json({
         status: 'imported',
         providerId: body.providerId ?? null,
+        verified,
         savedTo,
         ...result,
       });

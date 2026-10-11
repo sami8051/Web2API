@@ -185,6 +185,15 @@ export class BrowserManager {
     };
   }
 
+  /** True when the profile holds at least one of the given localStorage keys on `origin`. */
+  async hasStoredSession(origin: string, localStorageKeys: string[]): Promise<boolean> {
+    const page = await this.getPageForOrigin(origin);
+    return page.evaluate(
+      (keys) => keys.some(key => (window.localStorage.getItem(key) || '').length > 0),
+      localStorageKeys,
+    ).catch(() => false);
+  }
+
   /**
    * Execute fetch in browser context. Navigates to the target domain first
    * so that cookies are available and CORS is not an issue.

@@ -1108,67 +1108,41 @@ function normalizeRecord(value) {
   return out;
 }
 
-// Login flow
-async function loginProvider(providerId) {
-  try {
-    showToast('Launching Chrome for ' + providerId + '...');
-    var res = await apiFetch('/admin/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerId: providerId }),
-    });
-    var data = await res.json();
-    if (data.status === 'login_started') {
-      showToast(data.message || 'Chrome window opened. Please log in.');
-      pollLoginStatus(providerId);
-    } else if (data.status === 'error' || data.error) {
-      showToast(data.message || data.error || 'Login failed');
-    }
-  } catch (err) {
-    showToast('Login failed: ' + err.message);
-  }
+// Login flow: Google blocks sign-in inside the automated Chrome, so the user logs in with their own
+// Chrome (new tab) and a bookmark on that tab sends the session back here through the URL fragment.
+function loginProvider(providerId) {
+  window.open(providerOrigins[providerId], '_blank');
+  showToast('Log in on the new tab, then click the "web-to-api capture" bookmark there');
 }
 
-// Poll login status endpoint for real-time feedback
-function pollLoginStatus(providerId) {
-  var interval = setInterval(async function () {
-    try {
-      // Check login-status for detailed progress
-      var statusRes = await apiFetch('/admin/auth/login-status');
-      var statusData = await statusRes.json();
-      if (statusData.status === 'waiting_for_user') {
-        showToast('Waiting for you to log in at the Chrome window...');
-      } else if (statusData.status === 'success') {
-        clearInterval(interval);
-        showToast(providerId + ' login completed!');
-        loadProviders();
-        loadHealth();
-        return;
-      } else if (statusData.status === 'failed') {
-        clearInterval(interval);
-        showToast('Login failed: ' + statusData.message);
-        return;
-      }
+function buildCaptureBookmarklet() {
+  var body = '(async()=>{var D=' + JSON.stringify(location.origin) + ';var ls={};'
+    + 'for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);ls[k]=localStorage.getItem(k)}'
+    + 'var ck=document.cookie;'
+    + 'try{var a=await cookieStore.getAll();if(a.length)ck=a.map(c=>({name:c.name,value:c.value,domain:location.hostname,path:c.path||"/",secure:!!c.secure,sameSite:c.sameSite||"Lax"}))}catch(e){}'
+    + 'var d={origin:location.origin,url:location.href,localStorage:ls,cookies:ck};'
+    + 'window.open(D+"/#capture="+btoa(unescape(encodeURIComponent(JSON.stringify(d)))),"_blank")})()';
+  return 'javascript:' + encodeURIComponent(body);
+}
 
-      // Also check provider status as backup
-      var res = await apiFetch('/admin/providers');
-      var data = await res.json();
-      var provider = data.providers.find(function (p) {
-        return p.id === providerId;
-      });
-      if (provider && provider.authenticated) {
-        clearInterval(interval);
-        showToast(providerId + ' authenticated!');
-        loadProviders();
-        loadHealth();
-      }
-    } catch (e) {
-      /* retry */
-    }
-  }, 2000);
-  setTimeout(function () {
-    clearInterval(interval);
-  }, 120000);
+async function importCapturedSession() {
+  var m = location.hash.match(/^#capture=(.+)$/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);   // tokens must not stay in the address bar/history
+  try {
+    var d = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    var providerId = Object.keys(providerOrigins).find(function (id) { return providerOrigins[id] === d.origin; });
+    if (!providerId) throw new Error('Unknown site ' + d.origin);
+    // A crafted link could carry someone else's session, so never import without asking.
+    if (!confirm('Import the ' + providerId + ' session captured from ' + d.origin + '?')) return;
+    var raw = { origin: d.origin, url: d.url, localStorage: d.localStorage, cookies: d.cookies };
+    var result = await postImportState(providerId, normalizeStateFile(raw, providerId), { raw: raw, persistKind: 'single' });
+    showToast(providerId + (result.verified === false ? ': no session token found, are you logged in?' : ' session imported'));
+    loadProviders();
+    loadHealth();
+  } catch (err) {
+    showToast('Capture failed: ' + err.message);
+  }
 }
 
 // Load system health stats
@@ -1249,6 +1223,13 @@ async function loadHealth() {
 // Initial load + auto-refresh every 10s
 initAuthFromUrl();
 loadDashboardConfig().then(function () {
+  document.getElementById('capture-bookmarklet').href = buildCaptureBookmarklet();
+  document.getElementById('btn-copy-capture').addEventListener('click', function () {
+    // Paste into the DevTools Console of the logged-in provider tab (type "allow pasting" first if Chrome asks).
+    navigator.clipboard.writeText(decodeURIComponent(buildCaptureBookmarklet().replace(/^javascript:/, '')));
+    showToast('Copied. Paste it in the provider tab Console (F12) and press Enter');
+  });
+  importCapturedSession();
   loadSettings();
   loadProviders();
   loadHealth();
