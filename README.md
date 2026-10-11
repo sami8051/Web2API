@@ -270,6 +270,25 @@ npm run cookies:refresh -- --status
 
 Or use dashboard **Session Import** or **Ops → Re-import Sessions** (applies immediately and saves to `imports/`).
 
+## Windows background launcher (system tray)
+
+[`scripts/windows/web-to-api-tray.ps1`](scripts/windows/web-to-api-tray.ps1) runs the API hidden with a tray icon near the clock (Windows PowerShell 5.1 only, no extra dependencies). Icon colour: green running, amber starting, red error, grey stopped. Tray menu: Start, Stop, Restart, Open Dashboard, Open API, Open Logs, Start with Windows, Exit. Double-click opens the dashboard.
+
+**What it runs** (detected from `package.json` at each start): `npm run start` if defined, else the built `bin` entry (`node dist/cli.js`) when it is newer than `src/`, else `npm run dev`. Always with `--no-open --browser-mode launch --port 3456`; your state dir, Chrome profile and sessions are untouched. If the API crashes it restarts automatically (2s, 4s, ... up to 60s backoff). If port 3456 is already taken (e.g. a terminal instance) it shows an error instead of letting the CLI drift to another port. Stop sends Ctrl+C so the CLI closes Chrome cleanly, then force-kills the whole process tree if needed. Only one tray instance can run.
+
+```powershell
+# Try it now (no startup change)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1
+
+# Install: asks for consent, adds a Startup-folder shortcut, launches the tray
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1 -Install
+
+# Uninstall: removes the shortcut and closes the tray (which stops the API)
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\web-to-api-tray.ps1 -Uninstall
+```
+
+Disable startup only: untick **Start with Windows** in the tray menu (or Task Manager → Startup apps → `web-to-api`). Logs: **Open Logs** opens `~/.web-to-api/logs` (`server.log`, plus `launcher.out.log` / `launcher.err.log` for the last run and `*.prev.log` for the one before). Close any manually started instance before enabling the tray, since both want port 3456. The dashboard's **Restart** button uses systemd and does nothing on Windows; use the tray's Restart.
+
 ## Environment variables
 
 | Variable | Description |
