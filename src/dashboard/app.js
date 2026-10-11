@@ -1142,9 +1142,11 @@ function buildCaptureBookmarklet() {
 async function installExtension() {
   var box = document.getElementById('extension-steps');
   try {
+    box.textContent = 'Working...';
+    box.classList.remove('hidden');
     var res = await apiFetch('/admin/extension/install', { method: 'POST' });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.message || data.error || ('HTTP ' + res.status + ' (restart the server so it has the new build)'));
     box.textContent = '';
     var steps = [
       data.opened ? 'Chrome opened the Extensions page.' : 'Open chrome://extensions in Chrome.',
@@ -1158,8 +1160,9 @@ async function installExtension() {
       row.textContent = line;
       box.appendChild(row);
     });
-    box.classList.remove('hidden');
   } catch (err) {
+    box.textContent = 'Install extension failed: ' + err.message;
+    box.classList.remove('hidden');
     showToast('Install extension failed: ' + err.message);
   }
 }

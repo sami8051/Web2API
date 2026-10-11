@@ -56,7 +56,7 @@ export function createApp(opts: AppOptions): Hono {
   app.get('/', (c) => {
     try {
       const html = readFileSync(join(__dirname, 'dashboard', 'index.html'), 'utf-8');
-      return c.html(html);
+      return c.html(html, 200, { 'Cache-Control': 'no-store' });   // page, script and server must never drift apart
     } catch {
       return c.text('Dashboard available after build. Run: npx tsup', 404);
     }
@@ -81,7 +81,7 @@ export function createApp(opts: AppOptions): Hono {
       : 'text/plain';
     try {
       const content = readFileSync(join(__dirname, 'dashboard', file), 'utf-8');
-      return c.text(content, 200, { 'Content-Type': contentType });
+      return c.text(content, 200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
     } catch {
       return c.text('Not found', 404);
     }
