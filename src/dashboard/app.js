@@ -281,6 +281,40 @@ function buildModelSelect(providerId, authenticated) {
 
 // Load providers list
 var connectAutoOpened = false;
+var lastProviders = [];
+
+// Step 2 of "Connect accounts": one Login per account, enabled only once the extension is installed.
+function renderConnectAccounts() {
+  var box = document.getElementById('connect-accounts');
+  var ready = extensionInstalled();
+  box.textContent = '';
+  lastProviders.forEach(function (p) {
+    var row = document.createElement('div');
+    row.className = 'account';
+
+    var dot = document.createElement('span');
+    dot.className = 'status-indicator ' + (p.authenticated ? 'active' : 'inactive');
+    var name = document.createElement('span');
+    name.className = 'provider-name';
+    name.textContent = p.name;
+    var state = document.createElement('span');
+    state.className = 'muted';
+    state.textContent = p.authenticated ? 'Connected' : 'Not connected';
+    row.append(dot, name, state);
+
+    if (!p.authenticated) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn primary sm';
+      btn.textContent = 'Login';
+      btn.disabled = !ready;
+      btn.title = ready ? '' : 'Install the extension first (step 1)';
+      btn.addEventListener('click', function () { loginProvider(p.id); });
+      row.appendChild(btn);
+    }
+    box.appendChild(row);
+  });
+}
 
 async function loadProviders() {
   updateExtensionUi();
@@ -344,13 +378,10 @@ async function loadProviders() {
         badge.textContent = modelCount + ' models';
         meta.appendChild(badge);
       } else {
-        var btn = document.createElement('button');
-        btn.className = 'btn-login';
-        btn.textContent = 'Login';
-        btn.addEventListener('click', function () {
-          loginProvider(p.id);
-        });
-        meta.appendChild(btn);
+        var off = document.createElement('span');
+        off.className = 'model-badge';
+        off.textContent = 'Not connected';
+        meta.appendChild(off);
       }
 
       head.appendChild(meta);
@@ -358,6 +389,9 @@ async function loadProviders() {
       if (p.authenticated) card.appendChild(buildModelSelect(p.id, true));
       list.appendChild(card);
     });
+
+    lastProviders = data.providers;
+    renderConnectAccounts();
 
     if ((authCount < data.providers.length || !extensionInstalled()) && !connectAutoOpened) {
       connectAutoOpened = true;
@@ -850,6 +884,7 @@ function updateExtensionUi() {
   document.getElementById('extension-status').textContent = extensionInstalled()
     ? 'Installed. Reload your Qwen / Kimi / DeepSeek tabs once.'
     : 'Not detected. Reload this page after installing.';
+  renderConnectAccounts();
 }
 
 function loginProvider(providerId) {
@@ -860,7 +895,7 @@ function loginProvider(providerId) {
     return;
   }
   window.open(providerOrigins[providerId], '_blank');
-  showToast('Log in on the new tab, then click the "web-to-api capture" bookmark there');
+  showToast('Sign in on the new tab. The extension syncs it automatically');
 }
 
 // Pairing secret: only a bookmark/script built by this dashboard can make it import a captured session,
