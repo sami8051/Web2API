@@ -93,11 +93,14 @@ function Save-Config($o) { New-Item -ItemType Directory -Force $InstallDir | Out
 $cfg = $null
 $Bound = $PSBoundParameters
 if (Test-Path $ConfigPath) { try { $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json } catch { Warn "Ignoring unreadable $ConfigPath" } }
-function Remember([string]$param, [string]$key) {
-    if (-not $Bound.ContainsKey($param) -and $cfg -and $cfg.$key) { Set-Variable -Scope Script -Name $param -Value $cfg.$key }
+# Plain statements (not a helper using Set-Variable -Scope Script): that scope does not exist when this runs as a script block.
+# The ref is deliberately NOT remembered: plain re-runs follow main, pin with -UpstreamRef each time.
+if ($cfg) {
+    if (-not $Bound.ContainsKey('Port') -and $cfg.port) { $Port = $cfg.port }
+    if (-not $Bound.ContainsKey('StateDir') -and $cfg.stateDir) { $StateDir = $cfg.stateDir }
+    if (-not $Bound.ContainsKey('ChromeProfile') -and $cfg.chromeProfile) { $ChromeProfile = $cfg.chromeProfile }
+    if (-not $Bound.ContainsKey('UpstreamRepo') -and $cfg.upstreamRepo) { $UpstreamRepo = $cfg.upstreamRepo }
 }
-Remember 'Port' 'port'; Remember 'StateDir' 'stateDir'; Remember 'ChromeProfile' 'chromeProfile'
-Remember 'UpstreamRepo' 'upstreamRepo'   # the ref is deliberately NOT remembered: plain re-runs follow main, pin with -UpstreamRef each time
 $Port = [int]$Port
 # These are the upstream defaults (src/config/paths.ts); only used for -RemoveData and port/launcher args.
 $EffStateDir = if ($StateDir) { $StateDir } else { Join-Path $UserHome '.web-to-api' }
@@ -112,7 +115,10 @@ function Get-TrayArgs([string]$extra) {
 }
 function Invoke-Tray([string]$extra) {   # run the tray script's non-GUI modes (-Stop/-Install/-Uninstall) in a child process
     if (-not (Test-Path $Launcher)) { return }
-    $p = Start-Process powershell.exe -ArgumentList (Get-TrayArgs $extra) -Wait -PassThru -NoNewWindow
+    # WaitForExit, not Start-Process -Wait: -Wait would also wait for the tray that -Install spawns
+    $p = Start-Process powershell.exe -ArgumentList (Get-TrayArgs $extra) -PassThru -NoNewWindow
+    $null = $p.Handle   # keep the handle so ExitCode is readable
+    $p.WaitForExit()
     if ($p.ExitCode -ne 0) { throw "Launcher '$extra' failed (exit $($p.ExitCode))" }
 }
 function Start-Tray { Start-Process powershell.exe -WindowStyle Hidden -ArgumentList (Get-TrayArgs '') | Out-Null }
