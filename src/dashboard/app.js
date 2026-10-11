@@ -885,33 +885,40 @@ function buildCaptureBookmarklet() {
   return 'javascript:' + encodeURIComponent(body);
 }
 
-// Chrome only allows unpacked extensions through its own UI, so the server opens chrome://extensions
-// and copies the folder path; the user does the three clicks listed below.
+// Chrome only loads unpacked extensions through its own Extensions page, so show the steps with copy buttons.
 async function installExtension() {
   var box = document.getElementById('extension-steps');
   try {
-    box.textContent = 'Working...';
-    box.classList.remove('hidden');
-    var res = await apiFetch('/admin/extension/install', { method: 'POST' });
+    var res = await apiFetch('/admin/extension');
     var data = await res.json().catch(function () { return {}; });
     if (!res.ok) throw new Error(data.message || data.error || ('HTTP ' + res.status + ' (restart the server so it has the new build)'));
     box.textContent = '';
-    var steps = [
-      data.opened ? 'Chrome opened the Extensions page.' : 'Open chrome://extensions in Chrome.',
-      '1. Turn on "Developer mode" (top right).',
-      '2. Click "Load unpacked".',
-      '3. ' + (data.copied ? 'Press Ctrl+V in the folder box (path already copied), then "Select Folder".' : 'Pick the folder:') + ' ' + data.dir,
-      'Then reload your Qwen / Kimi tabs.',
-    ];
-    steps.forEach(function (line) {
+    [
+      ['1. Open a new tab and go to', 'chrome://extensions'],
+      ['2. Turn on "Developer mode" (top right).'],
+      ['3. Click "Load unpacked" and choose this folder:', data.dir],
+      ['4. Reload this page and your Qwen / Kimi tabs.'],
+    ].forEach(function (step) {
       var row = document.createElement('div');
-      row.textContent = line;
+      row.textContent = step[0];
+      if (step[1]) {
+        var value = document.createElement('code');
+        value.textContent = step[1];
+        var copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'btn sm';
+        copy.textContent = 'Copy';
+        copy.addEventListener('click', function () {
+          navigator.clipboard.writeText(step[1]).then(function () { showToast('Copied'); });
+        });
+        row.append(' ', value, ' ', copy);
+      }
       box.appendChild(row);
     });
-  } catch (err) {
-    box.textContent = 'Install extension failed: ' + err.message;
     box.classList.remove('hidden');
-    showToast('Install extension failed: ' + err.message);
+  } catch (err) {
+    box.textContent = 'Could not load the extension steps: ' + err.message;
+    box.classList.remove('hidden');
   }
 }
 

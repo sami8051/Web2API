@@ -9,12 +9,10 @@ import { loadRuntimeSettings, saveRuntimeSettings } from '../core/runtime-settin
 import { PROVIDER_SESSION_SPECS } from '../session/import-config.js';
 import { defaultImportsSourceDir, findImportCandidates, persistImportRawFile, resolveImportPersistFilename, type ImportPersistKind } from '../session/import.js';
 import { tailLogFile } from '../core/logger.js';
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { platform } from 'node:os';
-import { findChromePath } from '../doctor.js';
 import { promisify } from 'node:util';
 
 // ======Settings=========
@@ -225,29 +223,12 @@ export function managementRoutes(deps: ManagementDeps): Hono {
     return c.json({ status: 'restarting', service: SERVICE_NAME });
   });
 
-  // Chrome cannot install an unpacked extension silently, so do the prep: open chrome://extensions in the
-  // user's own Chrome and put the folder path on the clipboard. The user then clicks Developer mode + Load unpacked.
-  app.post('/admin/extension/install', async (c) => {
-    const origin = c.req.header('origin');
-    if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: 'Cross-origin request refused' }, 403);
-
+  // Chrome only loads an unpacked extension through its own Extensions page, so the dashboard just needs the
+  // folder path; it shows the steps and the user does them in their own Chrome.
+  app.get('/admin/extension', async (c) => {
     const dir = findExtensionDir();
     if (!dir) return c.json({ error: 'Extension folder not found', message: 'No extension/ folder next to this install. Re-run the installer or set WTA_EXTENSION_DIR.' }, 404);
-
-    let opened = false;
-    let copied = false;
-    if (platform() === 'win32') {
-      const clip = spawn('clip.exe', [], { stdio: ['pipe', 'ignore', 'ignore'] });
-      clip.on('error', () => {});
-      clip.stdin.end(dir);
-      copied = true;
-      const chrome = findChromePath();
-      if (chrome) {
-        spawn(chrome, ['chrome://extensions'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
-        opened = true;
-      }
-    }
-    return c.json({ status: 'ready', dir, copied, opened });
+    return c.json({ dir });
   });
 
   app.post('/admin/auth/login', async (c) => {
