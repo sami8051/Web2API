@@ -29,6 +29,12 @@ $i = [scriptblock]::Create((irm https://raw.githubusercontent.com/sami8051/Web2A
 & $i -Port 3457                # other port (remembered for later updates)
 ```
 
+### Chrome extension (log in with Google, sessions sync by themselves)
+
+Google refuses sign-in inside the automated Chrome, so log in to Qwen / Kimi / DeepSeek in your normal Chrome. The extension in [`extension/`](extension) then sends that session (including `HttpOnly` cookies) to the local server on its own, at most every 10 minutes per site, or when you click its icon (badge: **OK**, **ERR** server not running, **!** no token, **?** unsupported tab).
+
+The installer copies it to `%LOCALAPPDATA%\Web2API\extension` and prints the one-time step (Chrome cannot install an unpacked extension silently on a normal PC): open `chrome://extensions`, enable **Developer mode**, click **Load unpacked** and choose that folder. After an update, press the extension's reload arrow. From a git checkout, load the `extension/` folder directly. It talks to `http://127.0.0.1:3456` and does not send an auth token, so it does not work with `--auth-token`.
+
 ### Update
 
 Run the install command again. It checks the upstream commit; if unchanged it only refreshes the launcher and makes sure the API is running. If upstream moved, it builds the new version **in a staging folder** (`npm ci`, `npm run build`, a smoke test that the CLI flags the launcher needs still exist), and only then swaps it in. A failed download, build or smoke test leaves your running version untouched and prints the log path. `-Force` rebuilds even if unchanged; `-UpstreamRef <tag|sha>` installs a specific upstream version (it is not remembered, a plain re-run follows `main` again).

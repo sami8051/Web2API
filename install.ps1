@@ -57,6 +57,7 @@ $AppNew = Join-Path $InstallDir 'app.new'
 $AppPrev = Join-Path $InstallDir 'app.prev'
 $LauncherDir = Join-Path $InstallDir 'launcher'
 $Launcher = Join-Path $LauncherDir 'web-to-api-tray.ps1'
+$ExtDir = Join-Path $InstallDir 'extension'
 $LogDir = Join-Path $InstallDir 'logs'
 $StartupLnk = Join-Path ([Environment]::GetFolderPath('Startup')) 'web-to-api.lnk'
 $script:Log = $null
@@ -148,6 +149,10 @@ function Write-Summary([string]$title = 'Done') {
     Ok "Dashboard: http://127.0.0.1:$Port/"
     Ok "API base : http://127.0.0.1:$Port/v1"
     Say "Tray icon: dot near the clock (may be under the ^ arrow). Menu: Start, Stop, Restart, Open Dashboard, Open Logs, Start with Windows, Exit."
+    if (Test-Path $ExtDir) {
+        Say "Chrome   : one-time step so Qwen/Kimi/DeepSeek logins sync by themselves: open chrome://extensions, turn on Developer mode,"
+        Say "           click Load unpacked and pick  $ExtDir   (after an update, click the extension's reload arrow)."
+    }
     Say "Update   : run the same install command again.   Rollback: add -Rollback.   Uninstall: add -Uninstall."
 }
 
@@ -158,6 +163,7 @@ function Invoke-Uninstall {
     elseif (Test-Path $StartupLnk) { Remove-Item $StartupLnk -Force }
     if (Test-Path $StartupLnk) { Remove-Item $StartupLnk -Force }
     Ok 'Tray stopped and startup entry removed'
+    if (Test-Path $ExtDir) { Warn 'Remove "web-to-api session sync" in chrome://extensions too (its folder is deleted below).' }
     if (Test-Path $InstallDir) {
         if (-not ((Test-Path $ConfigPath) -or (Test-Path $AppDir) -or (Test-Path $LauncherDir))) { throw "$InstallDir does not look like a Web2API install; not deleting it" }
         Assert-SafeToDelete $InstallDir
@@ -294,6 +300,21 @@ function Install-Launcher {
     $newHash
 }
 
+# Chrome cannot be told to install an unpacked extension silently (policy force-install only works on managed PCs),
+# so the files go to a stable folder and the summary prints the one-time "Load unpacked" step.
+function Install-Extension {
+    $local = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'extension' }
+    if ($local -and (Test-Path (Join-Path $local 'manifest.json'))) { $src = $local }
+    else {
+        Say "Fetching Chrome extension from $LauncherRepo@$LauncherRef ..."
+        $src = Join-Path (Download-Extract $LauncherRepo $LauncherRef) 'extension'
+        if (-not (Test-Path (Join-Path $src 'manifest.json'))) { Warn "Chrome extension not found in $LauncherRepo@$LauncherRef; skipping."; return }
+    }
+    New-Item -ItemType Directory -Force $ExtDir | Out-Null
+    Copy-Item (Join-Path $src '*') $ExtDir -Recurse -Force
+    Ok "Chrome extension files: $ExtDir"
+}
+
 function Complete-Start([string]$foreign) {   # $foreign: port owner measured BEFORE our tray started
     if ($foreign) {
         # Tray was just (re)started; if a foreign process owns the port the tray reports Error and keeps retrying.
@@ -325,6 +346,9 @@ function Invoke-Install {
 
     Step 'Launcher'
     $launcherHash = Install-Launcher
+
+    Step 'Chrome extension (session sync)'
+    Install-Extension
 
     Step "Upstream $UpstreamRepo@$UpstreamRef"
     $up = Get-Upstream
