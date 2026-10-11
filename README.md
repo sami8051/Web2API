@@ -105,8 +105,8 @@ That’s it. No curl, no manual file paths unless you prefer them.
 
 | Tab | What it’s for |
 |-----|----------------|
-| **Ops** | Health checks, smoke tests, re-import sessions, Telegram test alert |
-| **Settings** | Auto model order, Telegram error alerts (proxy + bot token + chat ID) |
+| **Ops** | Health checks, smoke tests, re-import sessions |
+| **Settings** | Auto model order, restart service |
 | **Logs** | Live `server.log` — auto-refreshes and scrolls to newest lines |
 
 ### When you need the command line
@@ -148,8 +148,8 @@ The dashboard is the main interface. After `npm run dev`, open **http://127.0.0.
 **Session Import (center)** — Kimi: paste `refresh_token`. DeepSeek: one Console state file. Qwen: cookies + Console state. Files land in `~/.web-to-api/imports/` and reload on restart.
 
 **Right panel**
-- **Ops** — Check All, Deep Test, Re-import Sessions, Telegram test
-- **Settings** — auto model fallback order, Telegram alerts (HTTP proxy if `api.telegram.org` is blocked)
+- **Ops** — Check All, Deep Test, Re-import Sessions
+- **Settings** — auto model fallback order, restart service
 - **Logs** — tail of `~/.web-to-api/logs/server.log`
 
 **Interactive login** — if you have a display (desktop or Xvfb), you can log in through Chrome from the provider cards instead of importing files. On a headless VPS, use Session Import only.
@@ -283,7 +283,7 @@ Runtime files never live in the project root.
 ```text
 ~/.web-to-api/                 # WTA_STATE_DIR — runtime data
   auth.json                    # provider auth flags
-  settings.json                # auto model order, Telegram alerts, etc.
+  settings.json                # auto model order
   logs/
   imports/                     # drop session JSON here
     deepseek-state.json        # Console localStorage (userToken / settingsJwt)
@@ -356,10 +356,6 @@ The dashboard's **Restart** button uses systemd and does nothing on Windows; use
 | `WTA_IMPORTS_DIR` | Session import folder (default `$WTA_STATE_DIR/imports`) |
 | `WTA_PROXY_SERVER` | Browser HTTP proxy |
 | `WTA_PROXY_USER` / `WTA_PROXY_PASS` | Proxy auth |
-| `WTA_TELEGRAM_BOT_TOKEN` | Error alerts (optional; also configurable in Settings tab) |
-| `WTA_TELEGRAM_CHAT_ID` | Telegram chat ID |
-| `WTA_TELEGRAM_PROXY_SERVER` | HTTP proxy for Telegram Bot API (Settings tab) |
-| `WTA_TELEGRAM_PROXY_USER` / `WTA_TELEGRAM_PROXY_PASS` | Telegram proxy auth |
 | `DISPLAY` | X11 display for headed Chromium (`:0` desktop, `:99` Xvfb, etc.) |
 
 ## Admin API

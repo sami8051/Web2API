@@ -14,7 +14,6 @@ import {
 import { AuthRequiredError, InvalidBodyError, errorToHttpResponse } from '../core/errors.js';
 import { estimateContextTokens, type Message } from '../core/provider.js';
 import type { StreamEvent } from '../core/stream.js';
-import type { ErrorNotifier } from '../core/error-notifier.js';
 import {
   buildOpenAIFeatureInstruction,
   hasPseudoFeatures,
@@ -27,7 +26,7 @@ const AUTO_MODEL_CONTEXT_WINDOW = 1_000_000;
 const AUTO_MODEL_MAX_OUTPUT = 8192;
 // ======Settings=========
 
-export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNotifier | null = null): Hono {
+export function openaiRoutes(registry: ProviderRegistry): Hono {
   const app = new Hono();
 
   app.post('/v1/chat/completions', async (c) => {
@@ -65,13 +64,6 @@ export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNot
     if (isAuto) {
       const response = await runAutoNonStreamCompletion(registry, runId, messages, featureOpts, pseudoFeatures, featureInstruction, contextTokens);
       if ('error' in response) {
-        notifyApiError(errorNotifier, {
-          route: '/v1/chat/completions',
-          model: body.model,
-          status: 502,
-          runId,
-          message: response.error.message,
-        });
         return c.json({ error: response.error }, 502 as any);
       }
       if (isStream) {
@@ -121,14 +113,6 @@ export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNot
               }
             }
             if (fullContent.length === 0 && lastError) {
-              notifyApiError(errorNotifier, {
-                route: '/v1/chat/completions',
-                model: body.model,
-                provider: provider.info.id,
-                status: 502,
-                runId,
-                message: lastError,
-              });
               const errEvent: StreamEvent = { type: 'error', message: lastError };
               const chunk = formatStreamChunk(runId, body.model, errEvent, false);
               await s.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -155,28 +139,12 @@ export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNot
               await s.write(`data: ${JSON.stringify(done)}\n\n`);
               await writeStreamUsage(s, runId, body.model, contextTokens, estimateTextTokens(`${parsed.content}${fullReasoning}`));
             } else {
-              notifyApiError(errorNotifier, {
-                route: '/v1/chat/completions',
-                model: body.model,
-                provider: provider.info.id,
-                status: 502,
-                runId,
-                message: parsed.message,
-              });
               const errEvent: StreamEvent = { type: 'error', message: parsed.message };
               const chunk = formatStreamChunk(runId, body.model, errEvent, false);
               await s.write(`data: ${JSON.stringify(chunk)}\n\n`);
             }
             await s.write(`data: ${formatDoneChunk()}\n\n`);
           } catch (err) {
-            notifyApiError(errorNotifier, {
-              route: '/v1/chat/completions',
-              model: body.model,
-              provider: provider.info.id,
-              status: 502,
-              runId,
-              message: (err as Error).message,
-            });
             const errEvent: StreamEvent = { type: 'error', message: (err as Error).message };
             const chunk = formatStreamChunk(runId, body.model, errEvent, false);
             await s.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -196,14 +164,6 @@ export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNot
               fullReasoning += event.delta;
             }
             if (event.type === 'error') {
-              notifyApiError(errorNotifier, {
-                route: '/v1/chat/completions',
-                model: body.model,
-                provider: provider.info.id,
-                status: 502,
-                runId,
-                message: event.message,
-              });
             }
             const chunk = formatStreamChunk(runId, body.model, event, isFirst);
             await s.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -212,14 +172,6 @@ export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNot
           await writeStreamUsage(s, runId, body.model, contextTokens, estimateTextTokens(`${fullContent}${fullReasoning}`));
           await s.write(`data: ${formatDoneChunk()}\n\n`);
         } catch (err) {
-          notifyApiError(errorNotifier, {
-            route: '/v1/chat/completions',
-            model: body.model,
-            provider: provider.info.id,
-            status: 502,
-            runId,
-            message: (err as Error).message,
-          });
           const errEvent: StreamEvent = {
             type: 'error',
             message: (err as Error).message,
@@ -234,28 +186,12 @@ export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNot
     // Non-streaming
     const result = await runProviderNonStreamCompletion(provider, model, messages, featureOpts, featureInstruction);
     if (result.error) {
-      notifyApiError(errorNotifier, {
-        route: '/v1/chat/completions',
-        model: body.model,
-        provider: provider.info.id,
-        status: 502,
-        runId,
-        message: result.error,
-      });
       return c.json({
         error: { message: result.error, type: 'provider_error', code: 'provider_error' },
       }, 502 as any);
     }
     const rendered = renderNonStreamCompletion(runId, body.model, result.fullContent, result.fullReasoning, featureOpts, pseudoFeatures, contextTokens);
     if ('error' in rendered) {
-      notifyApiError(errorNotifier, {
-        route: '/v1/chat/completions',
-        model: body.model,
-        provider: provider.info.id,
-        status: 502,
-        runId,
-        message: rendered.error.message,
-      });
       return c.json({ error: rendered.error }, 502 as any);
     }
     return c.json(rendered.body);
@@ -267,18 +203,6 @@ export function openaiRoutes(registry: ProviderRegistry, errorNotifier: ErrorNot
   });
 
   return app;
-}
-
-function notifyApiError(errorNotifier: ErrorNotifier | null, event: {
-  route: string;
-  model?: string;
-  provider?: string;
-  message: string;
-  status?: number;
-  runId?: string;
-}): void {
-  if (!errorNotifier) return;
-  void errorNotifier.notify(event);
 }
 
 async function runAutoNonStreamCompletion(

@@ -20,7 +20,6 @@ import { execSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { runDoctor, printDoctorResults, findChromePath } from './doctor.js';
-import { createTelegramErrorNotifier, mergeTelegramSettings, MutableErrorNotifier } from './core/error-notifier.js';
 import { setAutoModelOrder } from './core/auto-model-order.js';
 import { loadRuntimeSettings } from './core/runtime-settings.js';
 import { defaultImportsSourceDir, findImportCandidates, importSessionsFromDir } from './session/import.js';
@@ -373,12 +372,6 @@ program
     if (browserMode === 'launch') await verifySessions();
 
     // ── Step 5: Create and start server ──
-    const telegramNotifier = new MutableErrorNotifier();
-    const reloadTelegramNotifier = () => {
-      const runtime = loadRuntimeSettings(stateDir);
-      telegramNotifier.set(createTelegramErrorNotifier(mergeTelegramSettings(runtime.telegram, process.env)));
-    };
-    reloadTelegramNotifier();
 
     const app = createApp({
       registry,
@@ -386,8 +379,6 @@ program
       authToken: config.server.authToken,
       stateDir,
       logFilePath: getLogFilePath() ?? config.logging.file,
-      errorNotifier: telegramNotifier,
-      reloadTelegramNotifier,
       getBrowserStatus: () => browserManager.getStatus(),
       importBrowserState: (state) => browserManager.importBrowserState(state),
       onLogin: async (providerId: string) => {
@@ -468,9 +459,6 @@ program
   .option('--proxy-user <user>', 'proxy login')
   .option('--proxy-pass <pass>', 'proxy password')
   .option('--auth-token <token>', 'Bridge API bearer token')
-  .option('--telegram-bot-token <token>', 'Telegram bot token for API error alerts')
-  .option('--telegram-chat-id <id>', 'Telegram chat/user id for API error alerts')
-  .option('--telegram-api-base <url>', 'Telegram Bot API base URL')
   .option('--enable-now', 'run daemon-reload, enable and restart service now')
   .action((opts) => {
     installSystemdUserService(opts);
@@ -522,9 +510,6 @@ function installSystemdUserService(opts: any): void {
     WTA_PROXY_SERVER: opts.proxyServer || process.env.WTA_PROXY_SERVER,
     WTA_PROXY_USER: opts.proxyUser || process.env.WTA_PROXY_USER,
     WTA_PROXY_PASS: opts.proxyPass || process.env.WTA_PROXY_PASS,
-    WTA_TELEGRAM_BOT_TOKEN: opts.telegramBotToken || process.env.WTA_TELEGRAM_BOT_TOKEN,
-    WTA_TELEGRAM_CHAT_ID: opts.telegramChatId || process.env.WTA_TELEGRAM_CHAT_ID,
-    WTA_TELEGRAM_API_BASE: opts.telegramApiBase || process.env.WTA_TELEGRAM_API_BASE,
   };
 
   writeFileSync(DEFAULT_SERVICE_ENV_FILE, renderEnvironmentFile(envValues), { mode: 0o600 });

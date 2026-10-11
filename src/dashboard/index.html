@@ -37,11 +37,19 @@
     <details class="fold" id="connect">
       <summary>Connect accounts</summary>
       <div class="fold-body">
-        <p>Log in to Qwen, Kimi or DeepSeek in your own Chrome. The extension then keeps each session synced.</p>
-        <div class="row">
-          <button type="button" class="btn primary" id="btn-install-extension">Install extension</button>
-        </div>
-        <div class="note hidden" id="extension-steps" aria-live="polite"></div>
+        <ol class="steps">
+          <li>
+            <strong>Install the extension</strong> <span class="muted" id="extension-status"></span>
+            <div class="row">
+              <button type="button" class="btn primary" id="btn-install-extension">Install extension</button>
+            </div>
+            <div class="note hidden" id="extension-steps" aria-live="polite"></div>
+          </li>
+          <li>
+            <strong>Log in</strong>
+            <span class="muted">Click Login on a provider above and sign in with Google. The extension syncs the session by itself.</span>
+          </li>
+        </ol>
 
         <details class="sub">
           <summary>Manual import</summary>
@@ -132,42 +140,6 @@
             <button type="button" class="btn" id="btn-reset-auto-order">Reset</button>
           </div>
         </div>
-
-        <details class="sub">
-          <summary>Telegram alerts</summary>
-          <div class="sub-body">
-            <p class="muted" id="telegram-env-hint">Optional proxy, then verify the bot token, then fetch the chat ID.</p>
-            <div id="telegram-proxy-block" class="field">
-              <label for="telegram-proxy-server">HTTP proxy <span class="muted">(only if api.telegram.org is blocked)</span></label>
-              <div class="proxy-grid">
-                <input type="text" id="telegram-proxy-server" class="input" placeholder="http://host:port" spellcheck="false">
-                <input type="text" id="telegram-proxy-user" class="input" placeholder="username" spellcheck="false" autocomplete="off">
-                <input type="password" id="telegram-proxy-pass" class="input" placeholder="password" autocomplete="off">
-              </div>
-              <span class="muted" id="telegram-proxy-status"></span>
-            </div>
-            <div class="field">
-              <label for="telegram-bot-token">Bot token <span class="muted" id="telegram-token-hint">(required on first save)</span></label>
-              <div class="row">
-                <input type="password" id="telegram-bot-token" class="input" placeholder="123456:ABC…" autocomplete="off">
-                <button type="button" class="btn sm" id="btn-verify-telegram-token">Verify</button>
-              </div>
-              <span class="muted" id="telegram-verify-status"></span>
-            </div>
-            <div class="field">
-              <label for="telegram-chat-id">Chat ID <span class="muted">(send /start to the bot first)</span></label>
-              <div class="row">
-                <input type="text" id="telegram-chat-id" class="input" placeholder="-1001234567890" spellcheck="false">
-                <button type="button" class="btn sm" id="btn-discover-chat-id" disabled>Get ID</button>
-              </div>
-              <select id="telegram-chat-pick" class="input hidden" aria-label="Chat"></select>
-            </div>
-            <div class="row">
-              <button type="button" class="btn primary" id="btn-save-telegram">Save</button>
-              <button type="button" class="btn" id="btn-telegram-test">Send test</button>
-            </div>
-          </div>
-        </details>
 
         <div class="row between">
           <span class="muted">Restart the API process (the tray restarts it).</span>

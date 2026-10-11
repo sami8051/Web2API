@@ -152,3 +152,7 @@ details[open] > summary::before { transform: rotate(45deg); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 14px; }
+.steps li::marker { color: var(--muted); }
+.steps .row { margin-top: 8px; }

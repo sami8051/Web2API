@@ -6,7 +6,6 @@ import { AuthStore } from './auth/store.js';
 import type { BrowserStatus, LoginState } from './browser/manager.js';
 import type { BrowserStateImportPayload, BrowserStateImportResult } from './browser/manager.js';
 import { InvalidTokenError, errorToHttpResponse } from './core/errors.js';
-import type { ErrorNotifier } from './core/error-notifier.js';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,9 +27,7 @@ export interface AppOptions {
   verifySessions?: () => Promise<void>;
   verifySession?: (providerId: string) => Promise<boolean>;
   importBrowserState?: (state: BrowserStateImportPayload) => Promise<BrowserStateImportResult>;
-  errorNotifier?: ErrorNotifier | null;
   logFilePath?: string;
-  reloadTelegramNotifier?: () => void;
 }
 
 export function createApp(opts: AppOptions): Hono {
@@ -88,7 +85,7 @@ export function createApp(opts: AppOptions): Hono {
   });
 
   // Mount API routes
-  app.route('/', openaiRoutes(opts.registry, opts.errorNotifier ?? null));
+  app.route('/', openaiRoutes(opts.registry));
 
   const mgmtDeps: ManagementDeps = {
     registry: opts.registry,
@@ -99,10 +96,8 @@ export function createApp(opts: AppOptions): Hono {
     verifySession: opts.verifySession,
     getBrowserStatus: opts.getBrowserStatus,
     importBrowserState: opts.importBrowserState,
-    errorNotifier: opts.errorNotifier ?? null,
     stateDir: opts.stateDir,
     logFilePath: opts.logFilePath,
-    reloadTelegramNotifier: opts.reloadTelegramNotifier,
     startTime: Date.now(),
   };
   app.route('/', managementRoutes(mgmtDeps));

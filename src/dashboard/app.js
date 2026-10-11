@@ -181,26 +181,12 @@ document.querySelectorAll('.btn-copy[data-target]').forEach(function (btn) {
 document.getElementById('btn-check-all').addEventListener('click', checkAllProviders);
 document.getElementById('btn-test-all').addEventListener('click', testAllProviders);
 document.getElementById('btn-refresh-all').addEventListener('click', refreshAllCookies);
-document.getElementById('btn-telegram-test').addEventListener('click', testTelegramAlert);
-document.getElementById('btn-save-telegram').addEventListener('click', saveTelegramSettings);
-document.getElementById('btn-verify-telegram-token').addEventListener('click', verifyTelegramToken);
-document.getElementById('btn-discover-chat-id').addEventListener('click', discoverTelegramChatId);
-document.getElementById('telegram-chat-pick').addEventListener('change', onTelegramChatPick);
-document.getElementById('telegram-proxy-server').addEventListener('input', updateTelegramControls);
-document.getElementById('telegram-proxy-user').addEventListener('input', updateTelegramControls);
-document.getElementById('telegram-proxy-pass').addEventListener('input', updateTelegramControls);
-document.getElementById('telegram-bot-token').addEventListener('input', function () {
-  telegramTokenVerified = false;
-  updateTelegramControls();
-  document.getElementById('telegram-verify-status').textContent = '';
-});
 
 // ======Settings=========
 var LOGS_POLL_MS = 5000;
 // ======Settings=========
 
 var logsPollTimer = null;
-var telegramTokenVerified = false;
 document.getElementById('btn-import-state').addEventListener('click', importSelectedStateFile);
 document.getElementById('state-provider').addEventListener('change', updateImportForm);
 document.getElementById('btn-copy-export-script').addEventListener('click', copyExportScript);
@@ -297,6 +283,7 @@ function buildModelSelect(providerId, authenticated) {
 var connectAutoOpened = false;
 
 async function loadProviders() {
+  updateExtensionUi();
   await loadModels();
   try {
     var res = await apiFetch('/admin/providers');
@@ -372,7 +359,7 @@ async function loadProviders() {
       list.appendChild(card);
     });
 
-    if (authCount < data.providers.length && !connectAutoOpened) {
+    if ((authCount < data.providers.length || !extensionInstalled()) && !connectAutoOpened) {
       connectAutoOpened = true;
       document.getElementById('connect').open = true;
     }
@@ -501,242 +488,9 @@ async function loadSettings() {
     var data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error || res.statusText);
     document.getElementById('auto-order-input').value = (data.autoModelOrder || []).join('\n');
-    applyTelegramForm(data.telegram || {});
-    var tgStatus = data.telegram && data.telegram.configured ? 'Telegram: configured' : 'Telegram: not configured';
-    box.textContent = 'Settings loaded. ' + tgStatus + '. Service: ' + data.serviceName;
+    box.textContent = 'Settings loaded. Service: ' + data.serviceName;
   } catch (err) {
     box.textContent = 'Failed to load settings: ' + err.message;
-  }
-}
-
-function applyTelegramForm(telegram) {
-  var chatId = document.getElementById('telegram-chat-id');
-  var token = document.getElementById('telegram-bot-token');
-  var envHint = document.getElementById('telegram-env-hint');
-  var tokenHint = document.getElementById('telegram-token-hint');
-  var verifyStatus = document.getElementById('telegram-verify-status');
-  var proxyServer = document.getElementById('telegram-proxy-server');
-  var proxyUser = document.getElementById('telegram-proxy-user');
-  var proxyPass = document.getElementById('telegram-proxy-pass');
-
-  chatId.value = telegram.chatId || '';
-  token.value = '';
-  telegramTokenVerified = false;
-
-  if (telegram.proxy) {
-    proxyServer.value = telegram.proxy.server || '';
-    proxyUser.value = telegram.proxy.username || '';
-    proxyPass.value = '';
-    proxyPass.placeholder = telegram.proxy.passwordMasked
-      ? 'saved: ' + telegram.proxy.passwordMasked
-      : 'password';
-  } else {
-    proxyServer.value = '';
-    proxyUser.value = '';
-    proxyPass.value = '';
-    proxyPass.placeholder = 'password';
-  }
-
-  var locked = telegram.envLocked || {};
-  chatId.disabled = Boolean(locked.chatId);
-  token.disabled = Boolean(locked.botToken);
-  proxyServer.disabled = Boolean(locked.proxy);
-  proxyUser.disabled = Boolean(locked.proxy);
-  proxyPass.disabled = Boolean(locked.proxy);
-
-  if (locked.botToken || locked.chatId || locked.proxy) {
-    envHint.textContent = 'some fields locked by WTA_TELEGRAM_* env vars';
-  } else {
-    envHint.textContent = '1 · Proxy → 2 · Verify token → 3 · Get Chat ID';
-  }
-
-  if (telegram.botTokenMasked) {
-    tokenHint.textContent = 'saved: ' + telegram.botTokenMasked + ' — leave empty to keep';
-    token.placeholder = telegram.botTokenMasked;
-  } else {
-    tokenHint.textContent = 'paste token from @BotFather';
-    token.placeholder = '123456:ABC...';
-  }
-
-  verifyStatus.textContent = '';
-  updateTelegramControls();
-}
-
-function isTelegramProxyReady() {
-  var server = document.getElementById('telegram-proxy-server').value.trim();
-  var user = document.getElementById('telegram-proxy-user').value.trim();
-  var pass = document.getElementById('telegram-proxy-pass').value.trim();
-  var passEl = document.getElementById('telegram-proxy-pass');
-  var hasSavedPass = (passEl.placeholder || '').indexOf('saved:') >= 0;
-  var any = Boolean(server || user || pass);
-  if (!any) return true;
-  if (!server) return false;
-  if (user && !pass && !hasSavedPass) return false;
-  return true;
-}
-
-function updateTelegramControls() {
-  var proxyStatus = document.getElementById('telegram-proxy-status');
-  var verifyBtn = document.getElementById('btn-verify-telegram-token');
-  var discoverBtn = document.getElementById('btn-discover-chat-id');
-  var verifyStatus = document.getElementById('telegram-verify-status');
-
-  var server = document.getElementById('telegram-proxy-server').value.trim();
-  var user = document.getElementById('telegram-proxy-user').value.trim();
-  var pass = document.getElementById('telegram-proxy-pass').value.trim();
-  var anyProxy = Boolean(server || user || pass);
-
-  var proxyReady = isTelegramProxyReady();
-  verifyBtn.disabled = !proxyReady;
-
-  if (anyProxy && !proxyReady) {
-    proxyStatus.textContent = 'Fill proxy server (and password if username set)';
-    discoverBtn.disabled = true;
-    telegramTokenVerified = false;
-    if (verifyStatus.textContent.indexOf('OK —') === 0) {
-      verifyStatus.textContent = '';
-    }
-    return;
-  }
-
-  if (anyProxy && proxyReady) {
-    proxyStatus.textContent = 'Proxy configured — now verify token';
-  } else {
-    proxyStatus.textContent = 'No proxy — direct to api.telegram.org';
-  }
-
-  discoverBtn.disabled = !telegramTokenVerified || !proxyReady;
-}
-
-function getTelegramTokenPayload() {
-  var tokenVal = document.getElementById('telegram-bot-token').value.trim();
-  var payload = {
-    proxyServer: document.getElementById('telegram-proxy-server').value.trim(),
-    proxyUser: document.getElementById('telegram-proxy-user').value.trim(),
-    proxyPass: document.getElementById('telegram-proxy-pass').value,
-  };
-  if (tokenVal) payload.botToken = tokenVal;
-  return payload;
-}
-
-async function verifyTelegramToken() {
-  if (!isTelegramProxyReady()) {
-    showToast('Complete proxy settings first');
-    return;
-  }
-  var status = document.getElementById('telegram-verify-status');
-  var discoverBtn = document.getElementById('btn-discover-chat-id');
-  status.textContent = 'Checking token…';
-  discoverBtn.disabled = true;
-  telegramTokenVerified = false;
-  try {
-    var res = await apiFetch('/admin/telegram/verify-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(getTelegramTokenPayload()),
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error || res.statusText);
-    telegramTokenVerified = true;
-    updateTelegramControls();
-    var name = data.bot && data.bot.username ? '@' + data.bot.username : 'bot #' + data.bot.id;
-    status.textContent = 'OK — ' + name + ' via ' + (data.proxyLabel || 'api.telegram.org');
-    showToast('Token verified');
-  } catch (err) {
-    status.textContent = 'Verify failed: ' + err.message;
-    showToast('Verify failed');
-  }
-}
-
-async function discoverTelegramChatId() {
-  if (!isTelegramProxyReady()) {
-    showToast('Complete proxy settings first');
-    return;
-  }
-  if (!telegramTokenVerified) {
-    showToast('Verify token first');
-    return;
-  }
-  var box = document.getElementById('settings-result');
-  var pick = document.getElementById('telegram-chat-pick');
-  box.textContent = 'Fetching chat IDs…';
-  try {
-    var res = await apiFetch('/admin/telegram/discover-chats', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(getTelegramTokenPayload()),
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error || res.statusText);
-
-    pick.textContent = '';
-    pick.classList.add('hidden');
-
-    if (!data.chats || data.chats.length === 0) {
-      box.textContent = data.message || 'No chats found. Message your bot first.';
-      showToast('No chats yet');
-      return;
-    }
-
-    if (data.chats.length === 1) {
-      document.getElementById('telegram-chat-id').value = data.chats[0].id;
-      box.textContent = 'Chat ID set: ' + data.chats[0].title + ' (' + data.chats[0].id + ')';
-      showToast('Chat ID found');
-      return;
-    }
-
-    var placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Select chat (' + data.chats.length + ')';
-    pick.appendChild(placeholder);
-    data.chats.forEach(function (chat) {
-      var opt = document.createElement('option');
-      opt.value = chat.id;
-      opt.textContent = chat.title + ' · ' + chat.type + ' · ' + chat.id;
-      pick.appendChild(opt);
-    });
-    pick.classList.remove('hidden');
-    box.textContent = 'Multiple chats found — pick one from the list.';
-    showToast('Pick chat ID');
-  } catch (err) {
-    box.textContent = 'Get ID failed: ' + err.message;
-    showToast('Get ID failed');
-  }
-}
-
-function onTelegramChatPick() {
-  var pick = document.getElementById('telegram-chat-pick');
-  if (!pick.value) return;
-  document.getElementById('telegram-chat-id').value = pick.value;
-  showToast('Chat ID selected');
-}
-
-async function saveTelegramSettings() {
-  var box = document.getElementById('settings-result');
-  box.textContent = 'Saving Telegram settings...';
-  try {
-    var payload = {
-      chatId: document.getElementById('telegram-chat-id').value.trim(),
-      proxyServer: document.getElementById('telegram-proxy-server').value.trim(),
-      proxyUser: document.getElementById('telegram-proxy-user').value.trim(),
-      proxyPass: document.getElementById('telegram-proxy-pass').value,
-    };
-    var tokenVal = document.getElementById('telegram-bot-token').value.trim();
-    if (tokenVal) payload.botToken = tokenVal;
-
-    var res = await apiFetch('/admin/settings/telegram', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error || res.statusText);
-    applyTelegramForm(data.telegram || {});
-    box.textContent = data.message || 'Telegram settings saved.';
-    showToast('Telegram saved');
-  } catch (err) {
-    box.textContent = 'Telegram save failed: ' + err.message;
-    showToast('Telegram save failed');
   }
 }
 
@@ -840,21 +594,6 @@ function stopLogsPoll() {
   if (logsPollTimer) {
     clearInterval(logsPollTimer);
     logsPollTimer = null;
-  }
-}
-
-async function testTelegramAlert() {
-  var box = document.getElementById('ops-result');
-  box.textContent = 'Sending Telegram test...';
-  try {
-    var res = await apiFetch('/admin/notify/test', { method: 'POST' });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error || res.statusText);
-    box.textContent = data.message || 'Telegram test sent.';
-    showToast('Telegram test sent');
-  } catch (err) {
-    box.textContent = 'Telegram test failed: ' + err.message;
-    showToast('Telegram test failed');
   }
 }
 
@@ -1103,7 +842,23 @@ function normalizeRecord(value) {
 
 // Login flow: Google blocks sign-in inside the automated Chrome, so the user logs in with their own
 // Chrome (new tab) and a bookmark on that tab sends the session back here through the URL fragment.
+function extensionInstalled() {
+  return Boolean(document.documentElement.dataset.wtaExtension);
+}
+
+function updateExtensionUi() {
+  document.getElementById('extension-status').textContent = extensionInstalled()
+    ? 'Installed. Reload your Qwen / Kimi / DeepSeek tabs once.'
+    : 'Not detected. Reload this page after installing.';
+}
+
 function loginProvider(providerId) {
+  // The extension is what carries the login back here, so it has to exist before the user signs in.
+  if (!extensionInstalled()) {
+    document.getElementById('connect').open = true;
+    showToast('Install the extension first (step 1), then log in');
+    return;
+  }
   window.open(providerOrigins[providerId], '_blank');
   showToast('Log in on the new tab, then click the "web-to-api capture" bookmark there');
 }

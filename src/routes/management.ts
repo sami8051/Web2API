@@ -4,15 +4,6 @@ import { AuthStore } from '../auth/store.js';
 import type { BrowserStatus, LoginState } from '../browser/manager.js';
 import type { BrowserStateImportPayload, BrowserStateImportResult } from '../browser/manager.js';
 import type { MetricsCollector } from '../core/metrics.js';
-import type { ErrorNotifier } from '../core/error-notifier.js';
-import { buildTelegramSettingsView } from '../core/error-notifier.js';
-import {
-  discoverTelegramChatIds,
-  parseTelegramProxyFromBody,
-  resolveTelegramToken,
-  verifyTelegramBotToken,
-} from '../core/telegram-bot-api.js';
-import type { TelegramSettings } from '../core/runtime-settings.js';
 import { getAutoModelOrder, resetAutoModelOrder, setAutoModelOrder } from '../core/auto-model-order.js';
 import { loadRuntimeSettings, saveRuntimeSettings } from '../core/runtime-settings.js';
 import { PROVIDER_SESSION_SPECS } from '../session/import-config.js';
@@ -51,10 +42,8 @@ export interface ManagementDeps {
   importBrowserState?: (state: BrowserStateImportPayload) => Promise<BrowserStateImportResult>;
   startTime?: number;
   metrics?: MetricsCollector;
-  errorNotifier?: ErrorNotifier | null;
   stateDir?: string;
   logFilePath?: string;
-  reloadTelegramNotifier?: () => void;
 }
 
 export function managementRoutes(deps: ManagementDeps): Hono {
@@ -187,19 +176,6 @@ export function managementRoutes(deps: ManagementDeps): Hono {
     return c.json({ status: 'completed', importsDir: sourceDir, results });
   });
 
-  app.post('/admin/notify/test', async (c) => {
-    const notifier = deps.errorNotifier;
-    if (!notifier) {
-      return c.json({ status: 'disabled', message: 'Telegram notifier is not configured.' }, 503);
-    }
-    await notifier.notify({
-      route: '/admin/notify/test',
-      status: 200,
-      message: `Dashboard test notification ${new Date().toISOString()}`,
-    });
-    return c.json({ status: 'sent', message: 'Telegram test notification queued.' });
-  });
-
   app.get('/admin/settings', async (c) => {
     const persisted = deps.stateDir ? loadRuntimeSettings(deps.stateDir) : {};
     return c.json({
@@ -207,143 +183,8 @@ export function managementRoutes(deps: ManagementDeps): Hono {
       persisted: {
         autoModelOrder: persisted.autoModelOrder,
       },
-      telegram: buildTelegramSettingsView(persisted.telegram),
       serviceName: SERVICE_NAME,
     });
-  });
-
-  app.post('/admin/settings/telegram', async (c) => {
-    if (!deps.stateDir) {
-      return c.json({ error: 'No state dir', message: 'Telegram settings require state directory.' }, 503);
-    }
-
-    let body: {
-      botToken?: string;
-      chatId?: string;
-      proxyServer?: string;
-      proxyUser?: string;
-      proxyPass?: string;
-    };
-    try {
-      body = await c.req.json<typeof body>();
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
-
-    const current = loadRuntimeSettings(deps.stateDir);
-    const telegram: TelegramSettings = { ...(current.telegram || {}) };
-
-    if (body.chatId !== undefined) {
-      telegram.chatId = String(body.chatId).trim();
-    }
-    if (body.botToken !== undefined) {
-      const token = String(body.botToken).trim();
-      if (token) telegram.botToken = token;
-    }
-    const proxyParsed = parseTelegramProxyFromBody(body, telegram.proxy);
-    if (proxyParsed !== undefined) {
-      if (proxyParsed === null) {
-        delete telegram.proxy;
-      } else {
-        telegram.proxy = proxyParsed;
-      }
-    }
-
-    if (!telegram.botToken || !telegram.chatId) {
-      return c.json({
-        error: 'Incomplete telegram settings',
-        message: 'botToken and chatId are required.',
-      }, 400);
-    }
-
-    saveRuntimeSettings(deps.stateDir, { ...current, telegram });
-    deps.reloadTelegramNotifier?.();
-
-    const view = buildTelegramSettingsView(telegram);
-    return c.json({
-      status: 'saved',
-      telegram: view,
-      message: view.configured ? 'Telegram notifier updated.' : 'Saved, but notifier is still incomplete.',
-    });
-  });
-
-  app.post('/admin/telegram/verify-token', async (c) => {
-    if (!deps.stateDir) {
-      return c.json({ error: 'No state dir' }, 503);
-    }
-    let body: {
-      botToken?: string;
-      proxyServer?: string;
-      proxyUser?: string;
-      proxyPass?: string;
-    };
-    try {
-      body = await c.req.json<typeof body>();
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
-
-    const settings = resolveTelegramDraftSettings(deps.stateDir, body);
-    const token = resolveTelegramToken(body.botToken, settings);
-    if (!token) {
-      return c.json({ error: 'Missing token', message: 'Provide botToken or save it first.' }, 400);
-    }
-
-    try {
-      const bot = await verifyTelegramBotToken(token, settings);
-      const view = buildTelegramSettingsView(settings);
-      return c.json({
-        status: 'ok',
-        bot,
-        proxyLabel: view.proxy?.label ?? 'direct (api.telegram.org)',
-      });
-    } catch (err) {
-      return c.json({ error: 'Verify failed', message: (err as Error).message }, 400);
-    }
-  });
-
-  app.post('/admin/telegram/discover-chats', async (c) => {
-    if (!deps.stateDir) {
-      return c.json({ error: 'No state dir' }, 503);
-    }
-    let body: {
-      botToken?: string;
-      proxyServer?: string;
-      proxyUser?: string;
-      proxyPass?: string;
-    };
-    try {
-      body = await c.req.json<typeof body>();
-    } catch {
-      return c.json({ error: 'Invalid JSON body' }, 400);
-    }
-
-    const settings = resolveTelegramDraftSettings(deps.stateDir, body);
-    const token = resolveTelegramToken(body.botToken, settings);
-    if (!token) {
-      return c.json({ error: 'Missing token', message: 'Verify bot token first.' }, 400);
-    }
-
-    try {
-      await verifyTelegramBotToken(token, settings);
-    } catch (err) {
-      return c.json({ error: 'Token invalid', message: (err as Error).message }, 400);
-    }
-
-    try {
-      const { chats, consumedUpdates } = await discoverTelegramChatIds(token, settings);
-      if (chats.length === 0) {
-        return c.json({
-          status: 'empty',
-          chats: [],
-          message: 'No messages yet. Open your bot in Telegram, send any message (e.g. /start), then try again.',
-          consumedUpdates,
-        });
-      }
-      return c.json({ status: 'ok', chats, consumedUpdates });
-    } catch (err) {
-      return c.json({ error: 'Discover failed', message: (err as Error).message }, 400);
-    }
   });
 
   app.post('/admin/settings/auto-order', async (c) => {
@@ -546,29 +387,6 @@ export function managementRoutes(deps: ManagementDeps): Hono {
   });
 
   return app;
-}
-
-function resolveTelegramDraftSettings(
-  stateDir: string,
-  body: {
-    botToken?: string;
-    proxyServer?: string;
-    proxyUser?: string;
-    proxyPass?: string;
-  },
-): TelegramSettings | undefined {
-  const persisted = loadRuntimeSettings(stateDir).telegram || {};
-  const draft: TelegramSettings = { ...persisted };
-  if (body.botToken?.trim()) draft.botToken = body.botToken.trim();
-  const proxyParsed = parseTelegramProxyFromBody(body, persisted.proxy);
-  if (proxyParsed !== undefined) {
-    if (proxyParsed === null) {
-      delete draft.proxy;
-    } else {
-      draft.proxy = proxyParsed;
-    }
-  }
-  return draft;
 }
 
 function persistAutoModelOrder(stateDir: string | undefined): void {
