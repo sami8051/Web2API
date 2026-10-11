@@ -929,7 +929,7 @@ async function installExtension() {
     if (!res.ok) throw new Error(data.message || data.error || ('HTTP ' + res.status + ' (restart the server so it has the new build)'));
     box.textContent = '';
     [
-      ['1. Open a new tab and go to', 'chrome://extensions'],
+      ['1. Go to Manage extensions: Chrome menu (three dots) → Extensions → Manage extensions. Or open', 'chrome://extensions'],
       ['2. Turn on "Developer mode" (top right).'],
       ['3. Click "Load unpacked" and choose this folder:', data.dir],
       ['4. Reload this page and your Qwen / Kimi tabs.'],
