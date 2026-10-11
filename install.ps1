@@ -249,6 +249,14 @@ function Build-Upstream([string]$dir) {
     $need = if ($pkg.engines.node -match '(\d+)') { [int]$Matches[1] } else { 0 }
     $have = [int](((& node -v) -replace '^v(\d+)\..*', '$1'))
     if ($have -lt $need) { throw "Upstream needs Node.js $need+, found $have. Update Node.js and re-run." }
+    # Upstream's doctor runs `chrome.exe --version`; on Windows that opens a full browser and blocks API startup after a reboot.
+    $doctor = Join-Path $dir 'src\doctor.ts'
+    $text = [IO.File]::ReadAllText($doctor)
+    $bad = "versionInfo = ' — ' + execSync("
+    $bad = $bad.Replace('—', [string][char]0x2014)
+    if ($text.Contains($bad)) {
+        [IO.File]::WriteAllText($doctor, $text.Replace($bad, "if (os !== 'win32') $bad"))
+    } elseif ($text.Contains('--version')) { Warn 'Could not patch upstream doctor.ts; API may hang at sign-in until it is fixed upstream.' }
     $npm = (Get-Command npm.cmd).Source
     $install = if (Test-Path (Join-Path $dir 'package-lock.json')) { 'ci' } else { 'install' }
     Invoke-Logged "npm $install" $npm @($install, '--no-audit', '--no-fund') $dir
