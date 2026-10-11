@@ -23,7 +23,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Root       = if ($AppDir) { $AppDir } else { (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
+$ProgressPreference = 'SilentlyContinue'   # a tray has no console to draw progress bars on (CIM cmdlets throw otherwise)
+$Root      = if ($AppDir) { $AppDir } else { (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 if ($ChromeProfile) { $CliArgs = @($CliArgs) + @('--chrome-profile', $ChromeProfile) }
 $LogDir     = Join-Path $StateDir 'logs'
 $OutLog     = Join-Path $LogDir 'launcher.out.log'
@@ -35,11 +36,22 @@ $MutexName  = 'Local\web-to-api-tray'
 $StartupGraceSec = 120   # API must open its port within this long, else it is killed and retried
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-Add-Type -Namespace W -Name K -MemberDefinition @'
+# Runs in a throwaway powershell: attaching to the API's console detaches the caller from its own,
+# and a tray whose console is gone dies on the next console write ("The handle is invalid").
+$CtrlCHelper = @'
+$ApiPid = [uint32]__PID__
+Add-Type -Namespace W -Name K -MemberDefinition @"
 [DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid);
 [DllImport("kernel32.dll")] public static extern bool FreeConsole();
 [DllImport("kernel32.dll")] public static extern bool SetConsoleCtrlHandler(IntPtr h, bool add);
 [DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint e, uint g);
+"@
+[void][W.K]::FreeConsole()
+if ([W.K]::AttachConsole($ApiPid)) {
+    [void][W.K]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)
+    [void][W.K]::GenerateConsoleCtrlEvent(0, 0)
+    Start-Sleep -Milliseconds 300
+}
 '@
 
 # Arguments that make a fresh tray process behave like this one (startup shortcut, -Install).
@@ -146,14 +158,10 @@ function Stop-Api {
     if ($p -and -not $p.HasExited) {
         Set-Status 'Stopped' 'stopping...'
         if ($script:Graceful) {   # Ctrl+C -> the CLI's SIGINT handler closes Chrome and flushes the profile
-            [void][W.K]::FreeConsole()
-            if ([W.K]::AttachConsole([uint32]$p.Id)) {
-                [void][W.K]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)
-                [void][W.K]::GenerateConsoleCtrlEvent(0, 0)
-                Start-Sleep -Milliseconds 200
-                [void][W.K]::FreeConsole()
-                [void][W.K]::SetConsoleCtrlHandler([IntPtr]::Zero, $false)
-            }
+            $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($CtrlCHelper.Replace('__PID__', "$($p.Id)")))
+            $h = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList `
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc
+            [void]$h.WaitForExit(5000)
             [void]$p.WaitForExit(8000)
         }
         if (-not $p.HasExited) { & taskkill.exe /PID $p.Id /T /F 2>&1 | Out-Null }   # whole tree, no orphans
