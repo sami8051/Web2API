@@ -109,11 +109,13 @@
             <div class="script-header">
               <div class="script-title">
                 <span>Sync from your Chrome (easiest: extension)</span>
-                <span class="script-sub">Install once: chrome://extensions → Developer mode → Load unpacked → the <code>extension</code> folder of web-to-api. It then syncs your logged-in Qwen/Kimi/DeepSeek tabs by itself (or click its icon). Fallback: bookmark / Copy.</span>
+                <span class="script-sub">Press Install extension once. It then syncs your logged-in Qwen/Kimi/DeepSeek tabs by itself (or click its icon). Fallback: bookmark / Copy.</span>
               </div>
+              <button type="button" class="btn-primary btn-sm" id="btn-install-extension">Install extension</button>
               <a id="capture-bookmarklet" class="btn-secondary btn-sm" href="#" draggable="true" onclick="return false">web-to-api capture</a>
               <button type="button" class="btn-secondary btn-sm" id="btn-copy-capture">Copy</button>
             </div>
+            <div id="extension-steps" class="script-sub hidden"></div>
           </div>
 
           <div id="export-script-box" class="script-panel hidden">

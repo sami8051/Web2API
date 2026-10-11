@@ -1115,14 +1115,53 @@ function loginProvider(providerId) {
   showToast('Log in on the new tab, then click the "web-to-api capture" bookmark there');
 }
 
+// Pairing secret: only a bookmark/script built by this dashboard can make it import a captured session,
+// so a crafted #capture link from another site cannot swap in someone else's login.
+function captureSecret() {
+  var key = 'wta_capture_secret';
+  var secret = localStorage.getItem(key);
+  if (!secret) {
+    secret = Array.from(crypto.getRandomValues(new Uint8Array(16)), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+    localStorage.setItem(key, secret);
+  }
+  return secret;
+}
+
 function buildCaptureBookmarklet() {
   var body = '(async()=>{var D=' + JSON.stringify(location.origin) + ';var ls={};'
     + 'for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);ls[k]=localStorage.getItem(k)}'
     + 'var ck=document.cookie;'
     + 'try{var a=await cookieStore.getAll();if(a.length)ck=a.map(c=>({name:c.name,value:c.value,domain:location.hostname,path:c.path||"/",secure:!!c.secure,sameSite:c.sameSite||"Lax"}))}catch(e){}'
-    + 'var d={origin:location.origin,url:location.href,localStorage:ls,cookies:ck};'
+    + 'var d={k:' + JSON.stringify(captureSecret()) + ',origin:location.origin,url:location.href,localStorage:ls,cookies:ck};'
     + 'window.open(D+"/#capture="+btoa(unescape(encodeURIComponent(JSON.stringify(d)))),"_blank")})()';
   return 'javascript:' + encodeURIComponent(body);
+}
+
+// Chrome only allows unpacked extensions through its own UI, so the server opens chrome://extensions
+// and copies the folder path; the user does the three clicks listed below.
+async function installExtension() {
+  var box = document.getElementById('extension-steps');
+  try {
+    var res = await apiFetch('/admin/extension/install', { method: 'POST' });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+    box.textContent = '';
+    var steps = [
+      data.opened ? 'Chrome opened the Extensions page.' : 'Open chrome://extensions in Chrome.',
+      '1. Turn on "Developer mode" (top right).',
+      '2. Click "Load unpacked".',
+      '3. ' + (data.copied ? 'Press Ctrl+V in the folder box (path already copied), then "Select Folder".' : 'Pick the folder:') + ' ' + data.dir,
+      'Then reload your Qwen / Kimi tabs.',
+    ];
+    steps.forEach(function (line) {
+      var row = document.createElement('div');
+      row.textContent = line;
+      box.appendChild(row);
+    });
+    box.classList.remove('hidden');
+  } catch (err) {
+    showToast('Install extension failed: ' + err.message);
+  }
 }
 
 async function importCapturedSession() {
@@ -1131,6 +1170,7 @@ async function importCapturedSession() {
   history.replaceState(null, '', location.pathname + location.search);   // tokens must not stay in the address bar/history
   try {
     var d = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    if (d.k !== captureSecret()) throw new Error('capture not made with this dashboard bookmark; re-drag or re-copy it');
     var providerId = Object.keys(providerOrigins).find(function (id) { return providerOrigins[id] === d.origin; });
     if (!providerId) throw new Error('Unknown site ' + d.origin);
     // A crafted link could carry someone else's session, so never import without asking.
@@ -1224,6 +1264,7 @@ async function loadHealth() {
 initAuthFromUrl();
 loadDashboardConfig().then(function () {
   document.getElementById('capture-bookmarklet').href = buildCaptureBookmarklet();
+  document.getElementById('btn-install-extension').addEventListener('click', installExtension);
   document.getElementById('btn-copy-capture').addEventListener('click', function () {
     // Paste into the DevTools Console of the logged-in provider tab (type "allow pasting" first if Chrome asks).
     navigator.clipboard.writeText(decodeURIComponent(buildCaptureBookmarklet().replace(/^javascript:/, '')));

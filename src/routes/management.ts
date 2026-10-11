@@ -18,9 +18,12 @@ import { loadRuntimeSettings, saveRuntimeSettings } from '../core/runtime-settin
 import { PROVIDER_SESSION_SPECS } from '../session/import-config.js';
 import { defaultImportsSourceDir, findImportCandidates, persistImportRawFile, resolveImportPersistFilename, type ImportPersistKind } from '../session/import.js';
 import { tailLogFile } from '../core/logger.js';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { platform } from 'node:os';
+import { findChromePath } from '../doctor.js';
 import { promisify } from 'node:util';
 
 // ======Settings=========
@@ -29,6 +32,13 @@ const SERVICE_LOG_LINES = 160;
 // ======Settings=========
 
 const execFileAsync = promisify(execFile);
+
+/** The browser extension folder: next to a git checkout's dist/, or next to the installer's app\ folder. */
+function findExtensionDir(): string | null {
+  const dist = dirname(fileURLToPath(import.meta.url));
+  const candidates = [process.env.WTA_EXTENSION_DIR, join(dist, '..', 'extension'), join(dist, '..', '..', 'extension')];
+  return candidates.find((dir): dir is string => Boolean(dir) && existsSync(join(dir!, 'manifest.json'))) ?? null;
+}
 
 export interface ManagementDeps {
   registry: ProviderRegistry;
@@ -372,6 +382,31 @@ export function managementRoutes(deps: ManagementDeps): Hono {
       void execFileAsync('systemctl', ['--user', 'restart', SERVICE_NAME]).catch(() => {});
     }, 250);
     return c.json({ status: 'restarting', service: SERVICE_NAME });
+  });
+
+  // Chrome cannot install an unpacked extension silently, so do the prep: open chrome://extensions in the
+  // user's own Chrome and put the folder path on the clipboard. The user then clicks Developer mode + Load unpacked.
+  app.post('/admin/extension/install', async (c) => {
+    const origin = c.req.header('origin');
+    if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: 'Cross-origin request refused' }, 403);
+
+    const dir = findExtensionDir();
+    if (!dir) return c.json({ error: 'Extension folder not found', message: 'No extension/ folder next to this install. Re-run the installer or set WTA_EXTENSION_DIR.' }, 404);
+
+    let opened = false;
+    let copied = false;
+    if (platform() === 'win32') {
+      const clip = spawn('clip.exe', [], { stdio: ['pipe', 'ignore', 'ignore'] });
+      clip.on('error', () => {});
+      clip.stdin.end(dir);
+      copied = true;
+      const chrome = findChromePath();
+      if (chrome) {
+        spawn(chrome, ['chrome://extensions'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+        opened = true;
+      }
+    }
+    return c.json({ status: 'ready', dir, copied, opened });
   });
 
   app.post('/admin/auth/login', async (c) => {
