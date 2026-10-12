@@ -22,10 +22,10 @@ const SERVICE_LOG_LINES = 160;
 
 const execFileAsync = promisify(execFile);
 
-/** The browser extension folder: next to a git checkout's dist/, or next to the installer's app\ folder. */
+/** The browser extension folder. The installer's copy (next to app\) is preferred: it stays put across updates. A git checkout has it next to dist/. */
 function findExtensionDir(): string | null {
   const dist = dirname(fileURLToPath(import.meta.url));
-  const candidates = [process.env.WTA_EXTENSION_DIR, join(dist, '..', 'extension'), join(dist, '..', '..', 'extension')];
+  const candidates = [process.env.WTA_EXTENSION_DIR, join(dist, '..', '..', 'extension'), join(dist, '..', 'extension')];
   return candidates.find((dir): dir is string => Boolean(dir) && existsSync(join(dir!, 'manifest.json'))) ?? null;
 }
 

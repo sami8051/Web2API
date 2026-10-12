@@ -12,7 +12,7 @@ Use DeepSeek, Kimi, and Qwen through their browser interfaces — no official AP
 
 ## Windows: one-command install (Web2API)
 
-**Web2API** = this upstream project + a Windows installer and system-tray launcher. One PowerShell command (not admin) installs **or updates** everything: Node.js (if missing, with your consent), the latest [`PruhaNLP/web-to-api`](https://github.com/PruhaNLP/web-to-api), its dependencies and build, the tray launcher, an optional start-at-sign-in entry, and starts the API on port **3456**.
+**Web2API** = a fork of [`PruhaNLP/web-to-api`](https://github.com/PruhaNLP/web-to-api) with a simplified dashboard, a Chrome extension for logins, a Windows installer and a system-tray launcher. One PowerShell command (not admin) installs **or updates** everything: Node.js (if missing, with your consent), the latest build of this repo, its dependencies, the tray launcher, the Chrome extension files, an optional start-at-sign-in entry, and starts the API on port **3456**.
 
 ```powershell
 irm https://raw.githubusercontent.com/sami8051/Web2API/main/install.ps1 | iex
@@ -37,7 +37,7 @@ The installer copies it to `%LOCALAPPDATA%\Web2API\extension` and prints the one
 
 ### Update
 
-Run the install command again. It checks the upstream commit; if unchanged it only refreshes the launcher and makes sure the API is running. If upstream moved, it builds the new version **in a staging folder** (`npm ci`, `npm run build`, a smoke test that the CLI flags the launcher needs still exist), and only then swaps it in. A failed download, build or smoke test leaves your running version untouched and prints the log path. `-Force` rebuilds even if unchanged; `-UpstreamRef <tag|sha>` installs a specific upstream version (it is not remembered, a plain re-run follows `main` again).
+Run the install command again. It checks this repo's latest commit; if unchanged it only refreshes the launcher and makes sure the API is running. If the repo moved, it builds the new version **in a staging folder** (`npm ci`, `npm run build`, a smoke test that the CLI flags the launcher needs still exist), and only then swaps it in. A failed download, build or smoke test leaves your running version untouched and prints the log path. `-Force` rebuilds even if unchanged; `-UpstreamRef <tag|sha>` installs a specific version (it is not remembered, a plain re-run follows `main` again); `-UpstreamRepo PruhaNLP/web-to-api` builds pure upstream instead.
 
 ### Rollback
 
@@ -69,9 +69,7 @@ Safety behaviour: only one tray and one installer can run at once; if port 3456 
 
 ### How this repo relates to upstream
 
-The repository root is a snapshot of upstream `PruhaNLP/web-to-api` (so `git clone` + `npm run dev` still work for development); Web2API's own files are `install.ps1` and `scripts/windows/`. **The installer does not use that snapshot**: it downloads the current upstream into the disposable `app\` folder and records the exact commit in `install.json`, so upstream updates reach users without anyone merging them here, and our launcher never gets overwritten by an upstream change. Customise via installer options (port, state dir, Chrome profile are remembered in `install.json`); do not hand-edit `app\`, it is replaced on update.
-
-> Security note: the one-liner runs a script from this repository, then downloads and builds third-party code (upstream + its npm dependencies) on your machine. Read [`install.ps1`](install.ps1) first if you want to; it is short and does nothing outside the folders in the table above.
+This repository is a fork of upstream `PruhaNLP/web-to-api`; the installer builds **this** repo into the disposable `app\` folder and records the exact commit in `install.json`. Upstream changes do not arrive automatically: merge them here when you want them (`git fetch origin && git merge origin/main`). Customise via installer options (port, state dir, Chrome profile are remembered in `install.json`); do not hand-edit `app\`, it is replaced on update.
 
 ## Start here (Web UI)
 

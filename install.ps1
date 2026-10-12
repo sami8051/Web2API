@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-  One-command installer/updater for web-to-api (upstream PruhaNLP/web-to-api) + our Windows tray launcher.
+  One-command installer/updater for web-to-api (built from sami8051/Web2API, a fork of PruhaNLP/web-to-api) + its Windows tray launcher.
 
 .DESCRIPTION
   The same command installs and updates:
     irm https://raw.githubusercontent.com/sami8051/Web2API/main/install.ps1 | iex
 
   Layout (all under -InstallDir, default %LOCALAPPDATA%\Web2API; safe to delete, holds no user data):
-    app\        upstream build (replaced on update; previous build kept in app.prev for -Rollback)
+    app\        build of the app repo (replaced on update; previous build kept in app.prev for -Rollback)
     app.new\    staging area while building; discarded if the build or smoke test fails
     launcher\   web-to-api-tray.ps1 (our tray launcher; a locally edited copy is backed up, never silently lost)
     install.json  what is installed (upstream commit, port, paths) - reused on every update
@@ -24,7 +24,7 @@
     -NoStartup            do not create/refresh the Windows sign-in startup entry
     -Force                rebuild even if upstream is unchanged
   Options (remembered for later updates): -Port 3456  -StateDir  -ChromeProfile  -InstallDir
-    -UpstreamRepo PruhaNLP/web-to-api  -UpstreamRef main|tag|sha   -LauncherRef main
+    -UpstreamRepo sami8051/Web2API (or PruhaNLP/web-to-api for pure upstream)  -UpstreamRef main|tag|sha   -LauncherRef main
   With `irm | iex` you cannot pass switches; use:
     & ([scriptblock]::Create((irm https://raw.githubusercontent.com/sami8051/Web2API/main/install.ps1))) -Yes
 #>
@@ -37,7 +37,7 @@ param(
     [switch]$NoStartup,
     [switch]$Force,
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Web2API'),
-    [string]$UpstreamRepo = 'PruhaNLP/web-to-api',
+    [string]$UpstreamRepo = 'sami8051/Web2API',
     [string]$UpstreamRef = 'main',
     [string]$LauncherRepo = 'sami8051/Web2API',
     [string]$LauncherRef = 'main',
@@ -100,7 +100,7 @@ if ($cfg) {
     if (-not $Bound.ContainsKey('Port') -and $cfg.port) { $Port = $cfg.port }
     if (-not $Bound.ContainsKey('StateDir') -and $cfg.stateDir) { $StateDir = $cfg.stateDir }
     if (-not $Bound.ContainsKey('ChromeProfile') -and $cfg.chromeProfile) { $ChromeProfile = $cfg.chromeProfile }
-    if (-not $Bound.ContainsKey('UpstreamRepo') -and $cfg.upstreamRepo) { $UpstreamRepo = $cfg.upstreamRepo }
+    if (-not $Bound.ContainsKey('UpstreamRepo') -and $cfg.upstreamRepo -and $cfg.upstreamRepo -ne 'PruhaNLP/web-to-api') { $UpstreamRepo = $cfg.upstreamRepo }   # the old default was never a choice
 }
 $Port = [int]$Port
 # These are the upstream defaults (src/config/paths.ts); only used for -RemoveData and port/launcher args.
@@ -260,7 +260,8 @@ function Build-Upstream([string]$dir) {
     $text = [IO.File]::ReadAllText($doctor)
     $bad = "versionInfo = ' — ' + execSync("
     $bad = $bad.Replace('—', [string][char]0x2014)
-    if ($text.Contains($bad)) {
+    if ($text.Contains("if (os !== 'win32') $bad")) { }   # already fixed in the source
+    elseif ($text.Contains($bad)) {
         [IO.File]::WriteAllText($doctor, $text.Replace($bad, "if (os !== 'win32') $bad"))
     } elseif ($text.Contains('--version')) { Warn 'Could not patch upstream doctor.ts; API may hang at sign-in until it is fixed upstream.' }
     $npm = (Get-Command npm.cmd).Source
