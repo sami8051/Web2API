@@ -258,8 +258,7 @@ function Build-Upstream([string]$dir) {
     # Upstream's doctor runs `chrome.exe --version`; on Windows that opens a full browser and blocks API startup after a reboot.
     $doctor = Join-Path $dir 'src\doctor.ts'
     $text = [IO.File]::ReadAllText($doctor)
-    $bad = "versionInfo = ' — ' + execSync("
-    $bad = $bad.Replace('—', [string][char]0x2014)
+    $bad = "versionInfo = ' $([char]0x2014) ' + execSync("
     if ($text.Contains("if (os !== 'win32') $bad")) { }   # already fixed in the source
     elseif ($text.Contains($bad)) {
         [IO.File]::WriteAllText($doctor, $text.Replace($bad, "if (os !== 'win32') $bad"))
